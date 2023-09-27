@@ -1,0 +1,793 @@
+
+```{r}
+set.seed(12)
+# Your original function
+generate_evs <- function(diff) {
+  ev_a <- runif(1, 20, 120)
+  ev_b <- ev_a + diff
+  return(list(ev_a = ev_a, ev_b = ev_b))
+}
+
+# Levels of diff
+ev_levels <- c(-20, -10, 0, 10, 20)
+
+# Create a list to store all trials
+trials_ev <- list()
+
+# For each level in ev_levels, generate 1000 trials
+for(level in ev_levels) {
+  trials <- replicate(40000, generate_evs(level), simplify = FALSE)
+  trials_ev <- c(trials_ev, trials)
+}
+
+length(trials_ev)
+# Extracting the ev_a values
+ev_a_list <- lapply(trials_ev, function(trial) trial$ev_a)
+
+# Extracting the ev_b values
+ev_b_list <- lapply(trials_ev, function(trial) trial$ev_b)
+
+ev_a_values <- unlist(ev_a_list)
+ev_b_values <- unlist(ev_b_list)
+
+
+```
+
+
+
+```{r}
+
+ find_solutionA <- function(pa1, pa2, eva) {
+  # Set ob2 to half the maximum possible value under constraint
+  
+  oa1 <- runif(1, 2, eva)
+  oa2 <- (eva - oa1*pa1)/pa2
+  return(list(oa1 = oa1, oa2 = oa2))
+  
+ }
+
+
+ find_solutionB <- function(pb1, pb2, evb) {
+  # Set ob2 to half the maximum possible value under constraint
+  
+  ob1 <- runif(1, 2, evb)
+  ob2 <- (evb - ob1*pb1)/pb2
+  return(list(ob1 = ob1, ob2 = ob2))
+  
+ }
+
+
+
+calculate_values <- function(Eva, Evb) {
+    # Generate random values for p_a1 and p_b1 within the given ranges
+    p_a1 <- runif(1, 0.8, 0.98)
+    p_b1 <- runif(1, 0.02, 0.2)
+  
+    # Calculate p_a2 and p_b2
+    p_a2 <- 1 - p_a1
+    p_b2 <- 1 - p_b1
+    
+    solutionA = find_solutionA(p_a1, p_a2, Eva)
+    solutionB = find_solutionB(p_b1, p_b2, Evb)
+    
+    # Randomly select either p_a1 or p_a2 for p1 and set the corresponding outcome for o1
+    if (runif(1) < 0.5) {
+        p1a <- p_a1
+        o1a <- solutionA$oa1
+        p2a = p_a2
+        o2a = solutionA$oa2
+    } else {
+        p1a <- p_a2
+        o1a <- solutionA$oa2
+        p2a <- p_a1
+        o2a <- solutionA$oa1
+    }
+    
+    # Randomly select either p_b1 or p_b2 for p1 and set the corresponding outcome for o1
+    if (runif(1) < 0.5) {
+        p1b <- p_b1
+        o1b <- solutionB$ob1
+        p2b = p_b2
+        o2b = solutionB$ob2
+    } else {
+        p1b <- p_b2
+        o1b <- solutionB$ob2
+        p2b <- p_b1
+        o2b <- solutionB$ob1
+    }
+  
+  
+   
+    
+    
+    
+    return(list(
+    lottery_a = list(p1 = round(p1a,2), o1 = round(o1a), p2 = round(p2a,2), o2 = round(o2a)),
+    lottery_b = list(p1 = round(p1b,2), o1 = round(o1b), p2 = round(p2b,2), o2 = round(o2b))))
+
+}
+
+
+
+
+
+
+
+```
+
+
+
+```{r, warning=FALSE}
+set.seed(12) # for reproducibility
+# Create an empty list to store the results for each trial
+results <- vector("list", length(ev_a_values))
+
+# Loop over each pair of eva and evb values
+
+for (i in 1:length(ev_a_values)) {
+  results[[i]] <- calculate_values(ev_a_values[i], ev_b_values[i])
+}
+
+
+```
+
+
+
+```{r}
+# Create an empty dataframe to store the results
+results_df <- data.frame(
+  evd = numeric(), 
+  sdd = numeric(),
+  ev_a = numeric(),
+  ev_b = numeric(),
+  p_a1 = numeric(),
+  o_a1 = numeric(),
+  p_a2 = numeric(),
+  o_a2 = numeric(),
+  p_b1 = numeric(),
+  o_b1 = numeric(),
+  p_b2 = numeric(),
+  o_b2 = numeric(),
+  sda = numeric(),
+  sdb = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop over each pair of eva and evb values
+for (i in 1:length(ev_a_values)) {
+  trial_results <- results[[i]]
+  
+  # Extract values for lottery_a and lottery_b
+ 
+  lottery_a <- trial_results$lottery_a
+  lottery_b <- trial_results$lottery_b
+  
+  ev_a <- lottery_a$p1*lottery_a$o1 + lottery_a$p2*lottery_a$o2
+  ev_b <- lottery_b$p1*lottery_b$o1 + lottery_b$p2*lottery_b$o2
+  evd <- ev_a-ev_b
+  
+  sda <-sqrt((lottery_a$o1-ev_a)^2*lottery_a$p1 +(lottery_a$o2-ev_a)^2*lottery_a$p2)
+  sdb <-sqrt((lottery_b$o1-ev_b)^2*lottery_b$p1 +(lottery_b$o2-ev_b)^2*lottery_b$p2)
+  sdd <- sda-sdb
+  # Add a row to the dataframe
+  results_df <- rbind(results_df, 
+    c(
+      evd,
+      sdd,
+      ev_a, 
+      ev_b,
+      lottery_a$p1, lottery_a$o1, lottery_a$p2, lottery_a$o2, 
+      lottery_b$p1, lottery_b$o1, lottery_b$p2, lottery_b$o2,
+      sda, sdb)
+  )
+}
+
+# Rename columns for clarity
+colnames(results_df) <- c("EVD","SDD", "EV_A", "EV_B", 
+                          "P_A1", "O_A1", "P_A2", "O_A2", 
+                          "P_B1", "O_B1", "P_B2", "O_B2", "SDA", "SDB")
+
+# Print the resulting dataframe
+print(results_df)
+
+
+```
+
+
+```{r}
+for (col in 1:14) {
+  results_df[, col] <- as.numeric(results_df[, col])
+}
+results_df
+```
+
+
+```{r}
+# 1. Remove rows where values of O_A1, O_A2, O_B1, and O_B2 are greater than 200.
+results_df <- results_df[!(results_df$O_A1 > 200 | 
+                           results_df$O_A2 > 200 | 
+                           results_df$O_B1 > 200 | 
+                           results_df$O_B2 > 200 |
+                             results_df$O_A1 < 1 | 
+                           results_df$O_A2 < 1 | 
+                           results_df$O_B1 < 1 | 
+                           results_df$O_B2 < 1), ]
+# 2. Remove rows with NA in any of the specified columns.
+cols_to_check <- c("P_A1", "O_A1", "P_A2", "O_A2", "P_B1", "O_B1", "P_B2", "O_B2")
+results_df <- results_df[complete.cases(results_df[, cols_to_check]), ]
+
+# Print the resulting dataframe
+print(results_df)
+
+```
+
+```{r}
+# Load the tidyverse which includes dplyr
+library(tidyverse)
+
+# Filter the rows
+filtered_df <- results_df %>% 
+  filter((SDD >= 4 & SDD <= 6) |
+         (SDD >= 9 & SDD <= 11) |
+         (SDD >= 14 & SDD <= 16))
+filtered_df
+```
+
+```{r}
+filtered_df2 <- filtered_df[
+         (filtered_df$EVD >= -21 & filtered_df$EVD <= -19) |
+         (filtered_df$EVD >= -11 & filtered_df$EVD <= -9) |
+         (filtered_df$EVD >= -1 & filtered_df$EVD <= 1) |
+         (filtered_df$EVD >= 19 & filtered_df$EVD <= 21) |
+         (filtered_df$EVD >= 9 & filtered_df$EVD <= 11), ]
+filtered_df2
+```
+
+
+
+```{r}
+df_rl<- filtered_df2 %>%
+  filter(
+    (ifelse(O_A1 < O_A2, P_A1, P_A2) > 0.8) & 
+    (ifelse(O_B1 < O_B2, P_B1, P_B2) < 0.2) &
+     (abs(O_A1- O_A2) > 10) & # maybe set it to 10
+    (abs(O_B1- O_B2) > 10)
+  )
+df_rl
+```
+
+```{r}
+df_rl <- df_rl %>%
+  filter(!(max(O_A1, O_A2)< min(O_B1, O_B2)) & !(min(O_A1, O_A2)>max(O_B1, O_B2)))
+df_rl
+```
+
+
+```{r}
+# Calculate the correlation coefficient
+correlation <- cor(df_rl$EVD, df_rl$SDD, method = "spearman")
+
+# Create the scatter plot with correlation line using ggplot2
+ggplot(df_rl, aes(x = df_rl$EVD, y = df_rl$SDD)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(x = "EVD", y = "SDD") +
+  annotate("text", x = 1, y = 1, label = paste0("Correlation: ", round(correlation, 2)), hjust = 2, vjust = 0.8, color = "red")
+
+```
+
+
+
+
+
+
+
+
+```{r}
+
+
+
+
+evd_level <- function(x) {
+  case_when(
+    x >= 19 & x <= 21 ~ '19 to 21',
+    x >= 9 & x <= 11 ~ '11 to 9',
+    x >= -1 & x <= 1 ~ '1 to -1',
+    x >= -11 & x <= -9 ~ '-9 to -11',
+    x >= -21 & x <= -19 ~ '-19 to -21',
+    TRUE ~ NA_character_
+  )
+}
+
+sdd_level <- function(x) {
+  case_when(
+    x >= 4 & x <= 6 ~ '4 to 6',
+    x >= 9 & x <= 11 ~ '9 to 11',
+    x >= 14 & x <= 16 ~ '14 to 16',
+    TRUE ~ NA_character_
+  )
+}
+
+# Sort the dataframe
+sorted_df <- df_rl %>% 
+  arrange(evd_level(EVD), sdd_level(SDD))
+
+print(sorted_df)
+
+
+```
+
+```{r}
+# Keeping only rows where values in column A are not repeated
+df_no_duplicates <- sorted_df[!duplicated(sorted_df$EV_A), ]
+df_no_duplicates <- df_no_duplicates[!duplicated(df_no_duplicates$EV_B), ]
+df_no_duplicates
+
+# Subsetting dataframe based on conditions
+df_no_dominant <- df_no_duplicates[
+  pmax(df_no_duplicates$O_A1, df_no_duplicates$O_A2) > pmin(df_no_duplicates$O_B1, df_no_duplicates$O_B2) & 
+  pmax(df_no_duplicates$O_B1, df_no_duplicates$O_B2) > pmin(df_no_duplicates$O_A1, df_no_duplicates$O_A2), 
+]
+df_no_dominant
+
+# df_no_dominant <- df_no_dominant[!(df_no_dominant$EV_A<30), ]
+# df_no_dominant <- df_no_dominant[!(df_no_dominant$EV_A>100), ]
+# df_no_dominant <- df_no_dominant[!(df_no_dominant$EV_B<30), ]
+# df_no_dominant <- df_no_dominant[!(df_no_dominant$EV_B>100), ]
+# df_no_dominant
+
+# Group by levels of evd and sdd, then count the rows
+combined_counts <- df_no_dominant %>%
+  group_by(evd_interval = evd_level(EVD), sdd_interval = sdd_level(SDD)) %>%
+  summarise(count = n())
+
+print(combined_counts)
+```
+
+
+
+```{r}
+# Sample dataframe
+set.seed(12) # for reproducibility
+
+
+# Define the bins for evd and sdd
+df_no_dominant$evd_bins <- cut(df_no_dominant$EVD, breaks = c(-Inf, -15, -9, 1, 11, 21), 
+                   labels = c("-19 to -21", "-9 to -11", "1 to -1", "11 to 9", "19 to 21"), 
+                   right = TRUE, include.lowest = TRUE)
+
+df_no_dominant$sdd_bins <- cut(df_no_dominant$SDD, breaks = c(0, 6, 11, 16), 
+                   labels = c("4 to 6", "9 to 11", "14 to 16"), 
+                   right = TRUE, include.lowest = TRUE)
+
+df_no_dominant
+```
+
+
+```{r}
+set.seed(12) # for reproducibility
+# Sample 4 rows for each combination
+endlist <- df_no_dominant %>% 
+  group_by(evd_bins, sdd_bins) %>% 
+  sample_n(4, replace = F) %>% 
+  ungroup() %>%  # ungrouping is needed to arrange the entire dataframe
+  arrange(evd_bins, sdd_bins)
+
+
+# View the result
+endlist
+
+```
+
+
+
+```{r}
+endlist$trial <- 1:nrow(endlist)
+endlist <- endlist[, c(ncol(endlist), 1:(ncol(endlist))-1)]
+endlist <- endlist[, c("trial", "P_A1", "O_A1", "P_A2", "O_A2", "P_B1", "O_B1", "P_B2", "O_B2")]
+endlist
+```
+
+```{r}
+set.seed(12) # for reproducibility
+
+solve_equations <- function(P_A1, P_A2, P_B1, P_B2) {
+  while(TRUE) {
+    # Generate for A
+    x1 <- round(runif(1, 0.21, 0.79), 2)
+    y1 <- round(1 - x1, 2)
+    if (x1 == y1 || y1 < 0.21 || y1 > 0.79) next
+
+    h1 <- round(runif(1, 0.02, 0.98), 2)
+    i1 <- round(1 - h1, 2)
+    if (any(c(h1, i1) %in% c(x1, y1))) next
+
+    j1 <- round((P_A1 - x1 * h1) / y1, 2)
+    k1 <- round((P_A2 - x1 * i1) / y1, 2)
+    if (any(c(j1, k1) %in% c(x1, y1, h1, i1)) || j1 < 0.02 || j1 > 0.99 || k1 < 0.02 || k1 > 0.99) next
+
+    # Generate for B
+    x2 <- round(runif(1, 0.21, 0.79), 2)
+    y2 <- round(1 - x2, 2)
+    if (x2 == y2 || y2 < 0.21 || y2 > 0.79 || x2 == x1) next
+
+    h2 <- round(runif(1, 0.02, 0.98), 2)
+    i2 <- round(1 - h2, 2)
+    if (any(c(h2, i2) %in% c(x1, y1, h1, i1, x2, y2))) next
+
+    j2 <- round((P_B1 - x2 * h2) / y2, 2)
+    k2 <- round((P_B2 - x2 * i2) / y2, 2)
+    if (any(c(j2, k2) %in% c(x1, y1, h1, i1, x2, y2, h2, i2)) || j2 < 0.02 || j2 > 0.99 || k2 < 0.02 || k2 > 0.99) next
+
+    return(list(x1=x1, y1=y1, h1=h1, i1=i1, j1=j1, k1=k1, x2=x2, y2=y2, h2=h2, i2=i2, j2=j2, k2=k2))
+  }
+}
+
+
+num_rows <- nrow(endlist)
+for (row_index in 1:num_rows) {
+  P_A1 <- endlist$P_A1[row_index]
+  P_A2 <- endlist$P_A2[row_index]
+  P_B1 <- endlist$P_B1[row_index]
+  P_B2 <- endlist$P_B2[row_index]
+  
+  probabilities <- solve_equations(P_A1, P_A2, P_B1, P_B2)
+  
+  endlist$x1[row_index] <- probabilities$x1
+  endlist$y1[row_index] <- probabilities$y1
+  
+  endlist$h1[row_index] <- probabilities$h1
+  endlist$i1[row_index] <- probabilities$i1
+  
+  endlist$j1[row_index] <- probabilities$j1
+  endlist$k1[row_index] <- probabilities$k1
+  
+  endlist$x2[row_index] <- probabilities$x2
+  endlist$y2[row_index] <- probabilities$y2
+  
+  endlist$h2[row_index] <- probabilities$h2
+  endlist$i2[row_index] <- probabilities$i2
+  
+  endlist$j2[row_index] <- probabilities$j2
+  endlist$k2[row_index] <- probabilities$k2
+  
+  
+  }
+
+endlist
+
+```
+
+
+
+```{r}
+set.seed(12) # for reproducibility
+#check whether the ev is correct
+row1 = round(runif(1, 46, 60))
+
+eva = endlist[row1,]$O_A1*endlist[row1,]$P_A1 + endlist[row1,]$O_A2*endlist[row1,]$P_A2
+
+evb = endlist[row1,]$O_B1*endlist[row1,]$P_B1 + endlist[row1,]$O_B2*endlist[row1,]$P_B2
+
+eva1 = endlist[row1,]$O_A1*(endlist[row1,]$x1*endlist[row1,]$h1 + endlist[row1,]$y1*endlist[row1,]$j1) + endlist[row1,]$O_A2*(endlist[row1,]$x1*endlist[row1,]$i1 + endlist[row1,]$y1*endlist[row1,]$k1)
+
+evb1 = endlist[row1,]$O_B1*(endlist[row1,]$x2*endlist[row1,]$h2 + endlist[row1,]$y2*endlist[row1,]$j2) +endlist[row1,]$O_B2*(endlist[row1,]$x2*endlist[row1,]$i2 + endlist[row1,]$y2*endlist[row1,]$k2)
+
+
+row1
+eva
+eva1
+evb
+
+evb1
+```
+```{r}
+cols_to_convert <- c("P_A1", "P_A2", "P_B1", "P_B2", 'x1', 'y1', 'h1', 'i1', 'j1', 'k1', 'x2', 'y2', 'h2', 'i2', 'j2', 'k2')
+
+endlist_int <- endlist
+for(col in cols_to_convert) {
+  endlist_int[[col]] <- as.integer(round(endlist_int[[col]] * 100))
+}
+
+
+endlist_int
+```
+
+```{r}
+# Generates row numbers for each kind of gamble
+result_row_ee <- 1 + 4 * (0:14)  
+result_row_ec <- 2 + 4 * (0:14)
+result_row_ce <- 3 + 4 * (0:14)
+result_row_cc <- 4 + 4 * (0:14)
+
+same_index = c(result_row_ee, result_row_cc)
+diff_index = c(result_row_ec, result_row_ce)
+same_index
+diff_index
+```
+
+
+```{r}
+
+write.csv(endlist, "eerl/stimuli_rl.csv", row.names = T)
+write.csv(endlist_int, "eerl/stimuli_rl_int.csv", row.names = T)
+```
+
+```{r}
+
+# create files for easy options (for easy vs. easy, compound vs. easy and easy vs. compound)
+create_drawio_xml <- function(values) {
+  xml_template <- sprintf('
+    <mxfile host="app.diagrams.net" modified="2023-08-23T12:23:02.105Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5.2 Safari/605.1.15" version="21.6.8" etag="eUfyXKMi7ORODsjOlncp" type="device">
+  <diagram name="Page-1" id="NvuDiosRalftlTnkZqtV">
+    <mxGraphModel dx="1853" dy="612" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="" style="endArrow=classic;html=1;rounded=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeWidth=3;" edge="1" target="8" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-438.5" y="440" as="sourcePoint" />
+            <mxPoint x="-597.5" y="600" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="3" value="" style="endArrow=classic;html=1;rounded=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeWidth=3;" edge="1" target="9" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-438.5" y="440" as="sourcePoint" />
+            <mxPoint x="-277.5" y="600" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="4" value="&lt;font style=&quot;font-size: 36px;&quot;&gt;%d%%&lt;/font&gt;" style="text;strokeColor=none;align=center;fillColor=none;html=1;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="-596.5" y="600" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="5" value="&lt;font style=&quot;font-size: 36px;&quot;&gt;%d%%&lt;/font&gt;" style="text;strokeColor=none;align=center;fillColor=none;html=1;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="-336" y="600" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="6" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="-468" y="379" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="7" value="" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=3;fillColor=none;strokeColor=none;opacity=0;" vertex="1" parent="1">
+          <mxGeometry x="-738.75" y="780" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="-660" y="780" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="9" value="" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="-340" y="780" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="10" value="" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=3;fillColor=none;strokeColor=none;opacity=0;" vertex="1" parent="1">
+          <mxGeometry x="-258.5" y="780" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="11" value="&lt;font style=&quot;font-size: 42px;&quot;&gt;%d $&lt;/font&gt;" style="text;strokeColor=none;align=center;fillColor=none;html=1;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;fontSize=38;" vertex="1" parent="1">
+          <mxGeometry x="-655" y="790" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="12" value="&lt;font style=&quot;font-size: 42px;&quot;&gt;%d $&lt;/font&gt;" style="text;strokeColor=none;align=center;fillColor=none;html=1;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;fontSize=42;" vertex="1" parent="1">
+          <mxGeometry x="-335" y="790" width="110" height="40" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+
+', values[[1]], values[[2]], values[[3]], values[[4]])
+  return(xml_template)
+}
+
+# Create 'eerl' directory if it doesn't exist
+if (!dir.exists("eerl")) {
+  dir.create("eerl")
+}
+
+# create option A for trials 1-15
+
+for (rownumber in result_row_ee) {
+  trial <- endlist_int[rownumber,]
+  values <- list(trial$P_A1, trial$P_A2, round(trial$O_A1), round(trial$O_A2))
+  xml_content <- create_drawio_xml(values)
+  
+  # Save to the 'eerl' folder
+  file_path <- sprintf("eerl/rl_trial%d_optionA.drawio", rownumber)
+  writeLines(xml_content, con = file_path)
+}
+
+# create option B for trials 1-15
+
+for (rownumber in result_row_ee) {
+  trial <- endlist_int[rownumber,]
+  values <- list(trial$P_B1, trial$P_B2, round(trial$O_B1), round(trial$O_B2))
+  xml_content <- create_drawio_xml(values)
+  
+  # Save to the 'eerl' folder
+  file_path <- sprintf("eerl/rl_trial%d_optionB.drawio", rownumber)
+  writeLines(xml_content, con = file_path)
+}
+
+
+# create option B for trials 16-30
+
+for (rownumber in result_row_ce) {
+  trial <- endlist_int[rownumber,]
+  values <- list(trial$P_B1, trial$P_B2, round(trial$O_B1), round(trial$O_B2))
+  xml_content <- create_drawio_xml(values)
+  
+  # Save to the 'eerl' folder
+  file_path <- sprintf("eerl/rl_trial%d_optionB.drawio", rownumber)
+  writeLines(xml_content, con = file_path)
+}
+
+
+# create option A for trials 31-45
+
+for (rownumber in result_row_ec) {
+  trial <- endlist_int[rownumber,]
+  values <- list(trial$P_A1, trial$P_A2, round(trial$O_A1), round(trial$O_A2))
+  xml_content <- create_drawio_xml(values)
+  
+  # Save to the 'eerl' folder
+  file_path <- sprintf("eerl/rl_trial%d_optionA.drawio", rownumber)
+  writeLines(xml_content, con = file_path)
+}
+
+
+
+```
+
+```{r}
+compoundtext2<-readChar('compoundxml.txt',file.info('compoundxml.txt')$size)
+
+compoundtext1 = '
+<mxfile host="app.diagrams.net" modified="2023-08-23T12:55:01.582Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5.2 Safari/605.1.15" etag="6LB8--B9hew_Q8COtgPw" version="21.6.9" type="device">
+  <diagram name="Page-1" id="fYwk8T2GxBYjYxb_xuNm">
+    <mxGraphModel dx="1853" dy="612" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="" style="endArrow=classic;html=1;rounded=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeWidth=3;" parent="1" target="6" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-438.5" y="440" as="sourcePoint" />
+            <mxPoint x="-567.5" y="720" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="3" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=3;" parent="1" source="6" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-593.5" y="660" as="sourcePoint" />
+            <mxPoint x="-678.5" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="4" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=3;" parent="1" source="7" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-293.5" y="660" as="sourcePoint" />
+            <mxPoint x="-358.5" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="5" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=3;" parent="1" source="6" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-548.5" y="650" as="sourcePoint" />
+            <mxPoint x="-518.5" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="6" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;strokeWidth=3;" parent="1" vertex="1">
+          <mxGeometry x="-622.5" y="600" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="7" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;strokeWidth=3;" parent="1" vertex="1">
+          <mxGeometry x="-302.5" y="600" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="" style="endArrow=classic;html=1;rounded=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeWidth=3;" parent="1" target="7" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-438.5" y="440" as="sourcePoint" />
+            <mxPoint x="-587.5" y="610" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="9" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=3;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-278.5" y="650" as="sourcePoint" />
+            <mxPoint x="-199.5" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+'
+```
+
+
+```{r}
+# create files for compound options (for compound vs. easy and easy vs. compound and compound vs. compound)
+
+
+
+create_drawio_xml2 <- function(values) {
+  xml_template <- sprintf(compoundtext2, values[[1]], values[[2]], values[[3]], values[[4]], values[[5]], values[[6]], values[[7]], values[[8]], values[[9]], values[[10]])
+  return(xml_template)
+}
+
+# Create 'eerl' directory if it doesn't exist
+if (!dir.exists("eerl")) {
+  dir.create("eerl")
+}
+
+# create option A for trials 16-30
+
+for (rownumber in result_row_ce) {
+  trial <- endlist_int[rownumber,]
+  values <- list(trial$x1, trial$y1, trial$h1, trial$i1, trial$j1,round(trial$O_A1), round(trial$O_A2), round(trial$O_A1), round(trial$O_A2), trial$k1)
+  xml_content <- paste(compoundtext1, create_drawio_xml2(values))
+  
+  # Save to the 'eerl' folder
+  file_path <- sprintf("eerl/rl_trial%d_optionA.drawio", rownumber)
+  writeLines(xml_content, con = file_path)
+}
+
+# create option B for trials 16-30
+
+for (rownumber in result_row_ec) {
+  trial <- endlist_int[rownumber,]
+  values <- list(trial$x2, trial$y2, trial$h2, trial$i2, trial$j2,round(trial$O_B1), round(trial$O_B2), round(trial$O_B1), round(trial$O_B2), trial$k2)
+  xml_content <- paste(compoundtext1, create_drawio_xml2(values))
+  
+  # Save to the 'eerl' folder
+  file_path <- sprintf("eerl/rl_trial%d_optionB.drawio", rownumber)
+  writeLines(xml_content, con = file_path)
+}
+
+
+# create option A for trials 46-60
+
+for (rownumber in result_row_cc) {
+  trial <- endlist_int[rownumber,]
+  values <- list(trial$x1, trial$y1, trial$h1, trial$i1, trial$j1,round(trial$O_A1), round(trial$O_A2), round(trial$O_A1), round(trial$O_A2), trial$k1)
+  xml_content <- paste(compoundtext1, create_drawio_xml2(values))
+  
+  # Save to the 'eerl' folder
+  file_path <- sprintf("eerl/rl_trial%d_optionA.drawio", rownumber)
+  writeLines(xml_content, con = file_path)
+}
+
+# create option B for trials 46-60
+
+for (rownumber in result_row_cc) {
+  trial <- endlist_int[rownumber,]
+  values <- list(trial$x2, trial$y2, trial$h2, trial$i2, trial$j2,round(trial$O_B1), round(trial$O_B2), round(trial$O_B1), round(trial$O_B2), trial$k2)
+  xml_content <- paste(compoundtext1, create_drawio_xml2(values))
+  
+  # Save to the 'eerl' folder
+  file_path <- sprintf("eerl/rl_trial%d_optionB.drawio", rownumber)
+  writeLines(xml_content, con = file_path)
+}
+
+```
+
+
+
+```{r}
+result <- list()
+counter <- 1
+for (i in same_index) {
+  trial_data <- endlist_int[i, ]
+  
+  result[[counter]] <- sprintf("{ stimulus: 'stimu_same/rl_trial%s_optionA.png, stimu_same/rl_trial%s_optionB.png', data: { test_part: 'rl'}, F: {probA1: %s, payA1: %s, probA2: %s, payA2: %s}, J: {probB1: %s, payB1: %s, probB2: %s, payB2: %s} }",
+                         i,i,
+                         trial_data$P_A1, trial_data$O_A1, trial_data$P_A2, trial_data$O_A2,
+                         trial_data$P_B1, trial_data$O_B1, trial_data$P_B2, trial_data$O_B2)
+  
+  counter <- counter + 1
+}
+
+result_text <- paste(result, collapse = ",\n            ")
+cat(result_text)
+```
+
+```{r}
+result <- list()
+counter <- 1
+for (i in diff_index) {
+  trial_data <- endlist_int[i, ]
+  
+  result[[counter]] <- sprintf("{ stimulus: 'stimu_diff/rl_trial%s_optionA.png, stimu_diff/rl_trial%s_optionB.png', data: { test_part: 'rl'}, F: {probA1: %s, payA1: %s, probA2: %s, payA2: %s}, J: {probB1: %s, payB1: %s, probB2: %s, payB2: %s} }",
+                         i,i,
+                         trial_data$P_A1, trial_data$O_A1, trial_data$P_A2, trial_data$O_A2,
+                         trial_data$P_B1, trial_data$O_B1, trial_data$P_B2, trial_data$O_B2)
+  
+  counter <- counter + 1
+}
+
+result_text <- paste(result, collapse = ",\n            ")
+cat(result_text)
+```
+
