@@ -74,10 +74,12 @@ generated quantities {
 
 ```{r}
 library(rstan)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
 library(RWiener)
 th_p =  4.51 
 ndt_p =   1.1 
-sp_p =  .7 
+sp_p =  .5 
 theta_p = 0.1
 alpha_p = 1
 
@@ -132,19 +134,19 @@ th_p_recover <- numeric(n_iter)
 theta_p_recover <- numeric(n_iter)
 ndt_p_recover <- numeric(n_iter)
 alpha_p_recover <- numeric(n_iter)
-sp_p_recover <- numeric(n_iter)
+
 
 th_p_bias <- numeric(n_iter)
 theta_p_bias <- numeric(n_iter)
 ndt_p_bias <- numeric(n_iter)
 alpha_p_bias <- numeric(n_iter)
-sp_p_bias <- numeric(n_iter)
+
 
 th_p_dev <- numeric(n_iter)
 theta_p_dev <- numeric(n_iter)
 ndt_p_dev <- numeric(n_iter)
 alpha_p_dev <- numeric(n_iter)
-sp_p_dev <- numeric(n_iter)
+
 
 
 initFunc <-function (i) {
@@ -152,10 +154,9 @@ initFunc <-function (i) {
   for (ll in 1:i){
     initList[[ll]] = list(
                           alpha_sbj = runif(1,-10,10),
-                          theta_v = runif(1,-0.001,0.001),
-                          threshold_v = runif(1,-0.001,0.001),
-                          ndt_v = runif(1,-1,-0.999),
-                          rel_sp = runif(1,-0.6,-0.4)
+                          theta_v = runif(1,-0.5,0.5),
+                          threshold_v = runif(1,-0.5,0.5),
+                          ndt_v = runif(1,-1.5,0)
     )
   }
   return(initList)
@@ -188,8 +189,8 @@ for (i in 1:n_iter) {
   
   
   
-  parameters = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'transf_rel_sp')
-  dataList  = list(cho = stim5$simcho, accuracy_flipped = stim5$cho2, rt = stim5$simrt, N=60, 
+  parameters = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj')
+  dataList  = list(cho = stim5$simcho, rt = stim5$simrt, N=60, starting_point=0.5,
                  oa = as.matrix(stim5[, c("payoffa1", "payoffa2")]),
                  ob = as.matrix(stim5[, c("payoffb1", "payoffb2")]),
                  pa = as.matrix(stim5[, c("proba1", "proba2")]),
@@ -204,14 +205,14 @@ for (i in 1:n_iter) {
   dsamples <- stan(model_code = ddm4,  
                 data=dataList, 
                 pars=parameters,
-                iter=200, 
+                iter=1000, 
                 chains=4,#If not specified, gives random inits
                 init=initFunc(4),
-                warmup = 100,  # Stands for burn-in; Default = iter/2
+                warmup = 500,  # Stands for burn-in; Default = iter/2
                 refresh = 0
                 )
   
-  samples <- extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj','transf_rel_sp'))
+  samples <- extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj'))
   
   
   # Store the outcome parameters for the current iteration
@@ -219,7 +220,7 @@ for (i in 1:n_iter) {
   theta_p_recover[i] <- mean(samples$theta_sbj)
   ndt_p_recover[i] <- mean(samples$ndt_sbj)
   alpha_p_recover[i] <- mean(samples$alpha_sbj)
-  sp_p_recover[i] <- mean(samples$transf_rel_sp)
+
   
   
   
@@ -227,14 +228,13 @@ for (i in 1:n_iter) {
   theta_p_bias[i] <- (mean(samples$theta_sbj)-theta_p)/theta_p
   ndt_p_bias[i] <- (mean(samples$ndt_sbj)-ndt_p)/ndt_p
   alpha_p_bias[i] <- (mean(samples$alpha_sbj)-alpha_p)/alpha_p
-  sp_p_bias[i] <- (mean(samples$transf_rel_sp)-sp_p)/sp_p
+
   
   
   th_p_dev[i] <- abs(mean(samples$threshold_sbj)-th_p)/th_p
   theta_p_dev[i] <- abs(mean(samples$theta_sbj)-theta_p)/theta_p
   ndt_p_dev[i] <- abs(mean(samples$ndt_sbj)-ndt_p)/ndt_p
   alpha_p_dev[i] <- abs(mean(samples$alpha_sbj)-alpha_p)/alpha_p
-  sp_p_dev[i] <- abs(mean(samples$transf_rel_sp)-sp_p)/sp_p
 
   
   
@@ -262,13 +262,7 @@ df_summary <- data.frame(original_th_p = th_p,
                  original_alpha_p = alpha_p, 
                  recovered_alpha_p = alpha_p_recover,
                  bias_alpha_p = alpha_p_bias,
-                 deviation_alpha_p = alpha_p_dev,
-                 original_sp_p = sp_p, 
-                 recovered_sp_p = sp_p_recover,
-                 bias_sp_p = sp_p_bias,
-                 deviation_sp_p = sp_p_dev
-                 
-                 )
+                 deviation_alpha_p = alpha_p_dev )
 
 
 
@@ -277,18 +271,18 @@ df_summary <- data.frame(original_th_p = th_p,
 
 ```{r}
 #create a table to show all means and true values
-df_mean <- data.frame(parameter = c('th_p', "theta_p", "ndt_p", "alpha_p",'sp_p'),
-                      true_value = c(th_p, theta_p,ndt_p, alpha_p, sp_p),
-                      mean_recovered = c(mean(df_summary$recovered_th_p), mean(df_summary$recovered_theta_p),mean(df_summary$recovered_ndt_p),mean(df_summary$recovered_alpha_p),mean(df_summary$recovered_sp_p)),
-                      mean_bias = c(mean(df_summary$bias_th_p), mean(df_summary$bias_theta_p),mean(df_summary$bias_ndt_p),mean(df_summary$bias_alpha_p), mean(df_summary$bias_sp_p)),
-                      mean_deviation = c(mean(df_summary$deviation_th_p), mean(df_summary$deviation_theta_p),mean(df_summary$deviation_ndt_p),mean(df_summary$deviation_alpha_p), mean(df_summary$deviation_sp_p))
+df_mean <- data.frame(parameter = c('th_p', "theta_p", "ndt_p", "alpha_p"),
+                      true_value = c(th_p, theta_p,ndt_p, alpha_p),
+                      mean_recovered = c(mean(df_summary$recovered_th_p), mean(df_summary$recovered_theta_p),mean(df_summary$recovered_ndt_p),mean(df_summary$recovered_alpha_p)),
+                      mean_bias = c(mean(df_summary$bias_th_p), mean(df_summary$bias_theta_p),mean(df_summary$bias_ndt_p),mean(df_summary$bias_alpha_p)),
+                      mean_deviation = c(mean(df_summary$deviation_th_p), mean(df_summary$deviation_theta_p),mean(df_summary$deviation_ndt_p),mean(df_summary$deviation_alpha_p))
                  )
 df_mean
 ```
 ```{r}
-df_median <- data.frame(parameter = c('th_p', "theta_p", "ndt_p", "alpha_p", 'sp_p'),
-                      true_value = c(th_p, theta_p,ndt_p, alpha_p ,sp_p),
-                      median_recovered = c(median(df_summary$recovered_th_p), median(df_summary$recovered_theta_p),median(df_summary$recovered_ndt_p),median(df_summary$recovered_alpha_p), median(df_summary$recovered_sp_p))
+df_median <- data.frame(parameter = c('th_p', "theta_p", "ndt_p", "alpha_p"),
+                      true_value = c(th_p, theta_p,ndt_p, alpha_p),
+                      median_recovered = c(median(df_summary$recovered_th_p), median(df_summary$recovered_theta_p),median(df_summary$recovered_ndt_p),median(df_summary$recovered_alpha_p))
                       )
 
 df_median
@@ -297,7 +291,6 @@ hist(df_summary$recovered_th_p)
 hist(df_summary$recovered_theta_p)
 hist(df_summary$recovered_ndt_p)
 hist(df_summary$recovered_alpha_p)
-hist(df_summary$recovered_sp_p)
 ```
 ```{r}
 #check whether the risky choice proportion can be successfully recovered by the mean-variance model
@@ -305,7 +298,7 @@ hist(df_summary$recovered_sp_p)
 for (i in 1:n_iter) {
 
   for(n in 1:nrow(stim7)){
-      cres <- rwiener(1,mean(df_summary$recovered_th_p), mean(df_summary$recovered_ndt_p), mean(df_summary$recovered_sp_p), mean(df_summary$recovered_theta_p) * ((pb[n,1] * (ob[n,1]^mean(df_summary$recovered_alpha_p)) + pb[n,2] * (ob[n,2]^mean(df_summary$recovered_alpha_p))) - (pa[n,1] * (oa[n,1]^mean(df_summary$recovered_alpha_p)) + pa[n,2] * (oa[n,2]^mean(df_summary$recovered_alpha_p)))))
+      cres <- rwiener(1,mean(df_summary$recovered_th_p), mean(df_summary$recovered_ndt_p), sp_p, mean(df_summary$recovered_theta_p) * ((pb[n,1] * (ob[n,1]^mean(df_summary$recovered_alpha_p)) + pb[n,2] * (ob[n,2]^mean(df_summary$recovered_alpha_p))) - (pa[n,1] * (oa[n,1]^mean(df_summary$recovered_alpha_p)) + pa[n,2] * (oa[n,2]^mean(df_summary$recovered_alpha_p)))))
       stim7$simrt[n] <- as.numeric(cres[1]) 
       stim7$simcho[n] <- ifelse(cres[2]=="upper",1,-1)
       stim7$cho2[n] <- ifelse(stim7$simcho[n] == 1, 0, ifelse(stim7$simcho[n] == -1, 1, NA))
@@ -390,7 +383,7 @@ pb = as.matrix(stim5[, c("probb1", "probb2")])
 
 ```{r warning=FALSE}
 # Set the number of iterations
-n_iter <- 1000
+n_iter <- 100
 
 
 `%+=%` = function(e1,e2) eval.parent(substitute(e1 <- e1 + e2))
@@ -465,10 +458,10 @@ for (i in 1:n_iter) {
   dsamples <- stan(model_code = ddm4,  
                 data=dataList, 
                 pars=parameters,
-                iter=2000, 
+                iter=1000, 
                 chains=4,#If not specified, gives random inits
                 init=initFunc(4),
-                warmup = 1000,  # Stands for burn-in; Default = iter/2
+                warmup = 500,  # Stands for burn-in; Default = iter/2
                 refresh = 0
                 )
   

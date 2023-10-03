@@ -4,11 +4,13 @@ library(rstan); rstan_options(javascript=FALSE)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = T)
 
-files <- dir(pattern="riskytimed")
+# Get list of files in 'data_2' folder with the pattern "riskytimed"
+files <- dir(path = "data_2", pattern="riskytimed")
 
-# read all csv in a list
-data_list <- lapply(files, read.table, header = TRUE, skip = 0, fill = TRUE, sep= ";")
-# concatenate rows of all items in the list in a data frame
+# Read all csv files in the list
+data_list <- lapply(paste0("data_2/", files), read.table, header = TRUE, skip = 0, fill = TRUE, sep= ";")
+
+# Concatenate rows of all items in the list into a data frame
 dat <- do.call("rbind", data_list)
 
 ```
@@ -41,7 +43,6 @@ rcontrol_dat <- control_dat[control_dat$rt>1,]
 # only condition no time pressure
 dataList  = list(cho = rcontrol_dat$cho, rt = rcontrol_dat$rt, participant = rcontrol_dat$tid, N=nrow(rcontrol_dat),  L = length(tids), starting_point=0.5, evd = rcontrol_dat$evd, sdd = rcontrol_dat$sdd)
 
-rcontrol_dat
 ```
 
 
@@ -51,7 +52,7 @@ parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_
 initFunc <-function (i) {
   initList=list()
   for (ll in 1:i){
-    initList[[ll]] = list(mu_alpha = runif(1,-.1,.1), 
+    initList[[ll]] = list(mu_alpha = runif(1,-.5,.5), 
                           sd_alpha = runif(1,0,1),
                           mu_threshold = runif(1,-0.5, 0.5), 
                           sd_threshold = runif(1,0,1),
@@ -73,34 +74,8 @@ initFunc <-function (i) {
 
 
 ```{r}
-initFunc2 <-function (i) {
-  initList=list()
-  for (ll in 1:i){
-    initList[[ll]] = list(mu_alpha = runif(1,-.1,.1), 
-                          sd_alpha = runif(1,0,1),
-                          mu_threshold = runif(1,-1,1), 
-                          sd_threshold = runif(1,0,1),
-                          mu_ndt = runif(1,-1.5, 0), 
-                          sd_ndt = runif(1,0, 1),
-                          mu_theta = runif(1,-2, 2), 
-                          sd_theta = runif(1,0,1),
-                          z_alpha = runif(length(tids),-0.1,0.1),
-                          z_theta = runif(length(tids),-0.1,0.1),
-                          z_threshold = runif(length(tids),-0.1,0.1),
-                          z_ndt = runif(length(tids),-0.1,0.1)
-    )
-  }
-  
-  return(initList)
-}
-```
-
-
-
-
-
-```{r}
-dsamples <- stan(file = "MV_Laura.stan",  
+m <- stan_model("MV_Baseline.stan")
+dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
                 iter=2000, 
@@ -108,7 +83,8 @@ dsamples <- stan(file = "MV_Laura.stan",
                 init = initFunc(4),
                 warmup = 1000,  # Stands for burn-in; Default = iter/2
                 seed = 12  # Setting seed; Default is random seed
-)
+                #refresh = 0
+                )
 ```
 
 
@@ -120,13 +96,6 @@ pairs(dsamples, pars = c("transf_mu_alpha","transf_mu_theta","transf_mu_threshol
 print(dsamples, pars = c("transf_mu_alpha", "transf_mu_theta", "transf_mu_threshold","transf_mu_ndt", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "lp__"))
 
 ```
-
-
-
-
-
-
-
 
 
 ```{r}

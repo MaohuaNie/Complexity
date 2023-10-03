@@ -4,13 +4,14 @@ library(rstan); rstan_options(javascript=FALSE)
 
 
 
-files <- dir(pattern="riskytimed")
+# Get list of files in 'data_2' folder with the pattern "riskytimed"
+files <- dir(path = "data_2", pattern="riskytimed")
 
-# read all csv in a list
-data_list <- lapply(files, read.table, header = TRUE, skip = 0, fill = TRUE, sep= ";")
-# concatenate rows of all items in the list in a data frame
+# Read all csv files in the list
+data_list <- lapply(paste0("data_2/", files), read.table, header = TRUE, skip = 0, fill = TRUE, sep= ";")
+
+# Concatenate rows of all items in the list into a data frame
 dat <- do.call("rbind", data_list)
-dat
 ```
 
 ```{r}
@@ -22,7 +23,7 @@ dat$sda = sqrt((dat$oa1-dat$eva)^2*dat$pa1 + (dat$oa2-dat$eva)^2*dat$pa2 + (dat$
 dat$sdb = sqrt((dat$ob1-dat$evb)^2*dat$pb1 + (dat$ob2-dat$evb)^2*dat$pb2 + (dat$ob3-dat$evb)^2*dat$pb3 + (dat$ob4-dat$evb)^2*dat$pb4)
 dat$sdd = dat$sdb - dat$sda
 dat$evdummy = ifelse(dat$evd>0,1,0)
-dat
+
 
 ```
 
@@ -46,137 +47,6 @@ dataList  = list(cho = rcontrol_dat$cho, accuracy_flipped = rcontrol_dat$cho2, r
 
 
 
-
-
-
-
-```{r}
-hier_ddm2 <- "
-data {
-	int<lower=1> N;									// number of data items
-	int<lower=1> L;									// number of participants
-	int<lower=1, upper=L> participant[N];			// level (participant)
-
-	int<lower=-1,upper=1> cho[N];				// accuracy (-1, 1)
-	int<lower=0,upper=1> accuracy_flipped[N];		// flipped accuracy (1, 0)
-	real<lower=0> rt[N];							// rt
-	
-	real evd[N];
-	real sdd[N];
-	real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
-}
-parameters {
-	real mu_alpha;
-	real mu_theta;
-	real mu_threshold;
-	real mu_ndt;
-	real mu_rel_sp;
-	
-
-	real<lower=0> sd_alpha;
-	real<lower=0> sd_theta;
-	real<lower=0> sd_threshold;
-	real<lower=0> sd_ndt;
-	real<lower=0> sd_rel_sp;
-	
-	
-	real z_theta[L];
-	real z_threshold[L];
-	real z_alpha[L];
-	real z_ndt[L];
-	real z_rel_sp[L];
-
-}
-
-transformed parameters {
-	real drift_ll[N];								// trial-by-trial drift rate for likelihood (incorporates accuracy)
-	real drift_t[N];								// trial-by-trial drift rate for predictions
-	real<lower=0> threshold_t[N];					// trial-by-trial threshold
-	real<lower=0> ndt_t[N];							// trial-by-trial ndt
-	real<lower=0, upper=1> rel_sp_ll[N];			// trial-by-trial relative starting point for likelihood 
-	real<lower=0, upper=1> rel_sp_t[N];				// trial-by-trial relative starting point
-
-
-
-
-	real alpha_sbj[L];
-	real<lower=0> theta_sbj[L];
-	real<lower=0> threshold_sbj[L];
-	real<lower=0> ndt_sbj[L];
-	real<lower=0, upper=1> rel_sp_sbj[L];
-
-
-	real transf_mu_alpha;
-	real transf_mu_theta;
-	real transf_mu_threshold;
-	real transf_mu_ndt;
-	real transf_mu_rel_sp;
-
-
-	transf_mu_alpha = mu_alpha;						// for the output
-	transf_mu_theta = log(1+ exp(mu_theta));					
-	transf_mu_threshold = log(1+ exp(mu_threshold));
-	transf_mu_ndt = log(1 + exp(mu_ndt));
-	transf_mu_rel_sp = Phi(mu_rel_sp);
-
-
-	for (l in 1:L) {
-		alpha_sbj[l] = mu_alpha + z_alpha[l]*sd_alpha;
-		theta_sbj[l] = log(1 + exp(mu_theta + z_theta[l]*sd_theta));
-		threshold_sbj[l] = log(1 + exp(mu_threshold + z_threshold[l]*sd_threshold));
-		ndt_sbj[l] = log(1 + exp(mu_ndt + z_ndt[l]*sd_ndt));
-		rel_sp_sbj[l] = Phi(mu_rel_sp + z_rel_sp[l]*sd_rel_sp);
-
-	}
-
-	for (n in 1:N) {
-		drift_t[n] = theta_sbj[participant[n]] *  (evd[n] + alpha_sbj[participant[n]] * sdd[n]);
-		drift_ll[n] = drift_t[n]*cho[n];
-		threshold_t[n] = threshold_sbj[participant[n]];
-		ndt_t[n] = ndt_sbj[participant[n]];
-		rel_sp_t[n] = rel_sp_sbj[participant[n]];
-		rel_sp_ll[n] = accuracy_flipped[n] + cho[n]*rel_sp_t[n];
-
-	}
-}
-model {
-	mu_alpha ~ normal(0, 5);
-	mu_theta ~ normal(0, 5);
-	mu_threshold ~ normal(0, 5);
-	mu_ndt ~ normal(0, 0.5);
-	mu_rel_sp ~ normal(0, 0.5);
-
-
-	sd_alpha ~ normal(0, 5);
-	sd_theta ~ normal(0, 5);
-	sd_threshold ~ normal(0, 5);
-	sd_ndt ~ normal(0, 0.5);
-	sd_rel_sp ~ normal(0, 0.5);
-
-	
-	z_alpha ~ normal(0, 1);
-	z_threshold ~ normal(0, 1);
-	z_ndt ~ normal(0, 1);
-	z_theta ~ normal(0, 1);
-	z_rel_sp ~ normal(0, 1);
-
-  
-	  
-
-	rt ~ wiener(threshold_t, ndt_t, rel_sp_ll, drift_ll);
-}
-generated quantities {
-	vector[N] log_lik;
-
-	{for (n in 1:N) {
-		log_lik[n] = wiener_lpdf(rt[n] | threshold_t[n], ndt_t[n], rel_sp_ll[n], drift_ll[n]);
-	}
-}
-}
-
-" 
-```
-
 ```{r}
 parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_rel_sp', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_rel_sp', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'rel_sp_sbj', "log_lik")
 
@@ -184,16 +54,16 @@ initFunc <-function (i) {
   initList=list()
   for (ll in 1:i){
     initList[[ll]] = list(
-                          mu_alpha = runif(1,-.1,.1), 
+                          mu_alpha = runif(1,-.5,.5), 
                           sd_alpha = runif(1,0,1),
-                          mu_threshold = runif(1,2,4), 
+                          mu_threshold = runif(1,-0.5, 0.5), 
                           sd_threshold = runif(1,0,1),
-                          mu_ndt = runif(1, 0, 0.5), 
-                          sd_ndt = runif(1,0,.1),
-                          mu_theta = runif(1,-1,1),
+                          mu_ndt = runif(1, -1.5, 0),
+                          sd_ndt = runif(1, 0, 1),
+                          mu_theta = runif(1,-0.5, -0.5), 
                           sd_theta = runif(1,0,1),
-                          mu_rel_sp = runif(1,-0.7,-0.2),
-                          sd_rel_sp = runif(1,0,.1),
+                          mu_rel_sp = runif(1,-0.5, -0.5), 
+                          sd_rel_sp = runif(1, 0, 1),
                           z_alpha = runif(length(tids),-0.1,0.1),
                           z_theta = runif(length(tids),-0.1,0.1),
                           z_threshold = runif(length(tids),-0.1,0.1),
@@ -208,42 +78,17 @@ initFunc <-function (i) {
 
 
 ```{r}
-initFunc2 <-function (i) {
-  initList=list()
-  for (ll in 1:i){
-    initList[[ll]] = list(mu_alpha = runif(1,-.1,.1), 
-                          sd_alpha = runif(1,0,1),
-                          mu_threshold = 0.3, 
-                          sd_threshold = 0.2,
-                          mu_ndt = -0.9, 
-                          sd_ndt = 0.05,
-                          mu_theta = runif(1,-2,2), 
-                          sd_theta = runif(1,0,1),
-                          mu_rel_sp = -0.3,
-                          sd_rel_sp = 0.05,
-                          z_alpha = runif(length(tids),-0.001,0.001),
-                          z_theta = runif(length(tids),-0.001,0.001),
-                          z_threshold = runif(length(tids),-0.001,0.001),
-                          z_ndt = runif(length(tids),-0.001,0.001)
-    )
-  }
-  
-  return(initList)
-}
-```
-
-
-
-```{r}
-dsamples <- stan(model_code = hier_ddm2,  
+m <- stan_model("MV_SP.stan")
+dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
-                iter=200, 
+                iter=2000, 
                 chains=4,#If not specified, gives random inits
-                init=initFunc(4),
-                warmup = 100,  # Stands for burn-in; Default = iter/2
-                seed = 123  # Setting seed; Default is random seed
-)
+                init = initFunc(4),
+                warmup = 1000,  # Stands for burn-in; Default = iter/2
+                seed = 12  # Setting seed; Default is random seed
+                #refresh = 0
+                )
 ```
 
 
@@ -257,4 +102,9 @@ print(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt"
 
 ```
 
-
+```{r}
+ratios_cp <- neff_ratio(dsamples, pars = c("transf_mu_alpha","transf_mu_theta", "transf_mu_threshold","transf_mu_ndt", 'transf_mu_rel_sp', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_rel_sp',"lp__"))
+df_ratios_cp <- as.data.frame(ratios_cp)
+print(df_ratios_cp)
+mcmc_neff(ratios_cp, size = 2)
+```
