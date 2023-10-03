@@ -1,0 +1,138 @@
+```{r}
+############### 0 - safe choice A, 1 - risky choice B #####################
+library(rstan); rstan_options(javascript=FALSE)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = T)
+
+files <- dir(pattern="riskytimed")
+
+# read all csv in a list
+data_list <- lapply(files, read.table, header = TRUE, skip = 0, fill = TRUE, sep= ";")
+# concatenate rows of all items in the list in a data frame
+dat <- do.call("rbind", data_list)
+
+```
+
+```{r}
+# gamble characteristics
+dat$eva = dat$oa1*dat$pa1+dat$oa2*dat$pa2 + dat$oa3*dat$pa3+dat$oa4*dat$pa4
+dat$evb = dat$ob1*dat$pb1+dat$ob2*dat$pb2 + dat$ob3*dat$pb3+dat$ob4*dat$pb4
+dat$evd = dat$evb - dat$eva
+dat$sda = sqrt((dat$oa1-dat$eva)^2*dat$pa1 + (dat$oa2-dat$eva)^2*dat$pa2 + (dat$oa3-dat$eva)^2*dat$pa3 + (dat$oa4-dat$eva)^2*dat$pa4)
+dat$sdb = sqrt((dat$ob1-dat$evb)^2*dat$pb1 + (dat$ob2-dat$evb)^2*dat$pb2 + (dat$ob3-dat$evb)^2*dat$pb3 + (dat$ob4-dat$evb)^2*dat$pb4)
+dat$sdd = dat$sdb - dat$sda
+dat$evdummy = ifelse(dat$evd>0,1,0)
+
+  
+```
+
+```{r}
+# transform to +/- 1; safe - 1, risky +1
+dat$cho <- ifelse(dat$choice==0,-1,ifelse(dat$choice==1,1,NA))
+ids <- unique(dat$id)
+for(j in 1:length(ids)){
+  dat$tid[dat$id==ids[j]] <- j
+}
+tids <- unique(dat$tid)
+# only control data
+control_dat <- dat[dat$cond=="control",]
+# remove fast RTs
+rcontrol_dat <- control_dat[control_dat$rt>1,]
+# only condition no time pressure
+dataList  = list(cho = rcontrol_dat$cho, rt = rcontrol_dat$rt, participant = rcontrol_dat$tid, N=nrow(rcontrol_dat),  L = length(tids), starting_point=0.5, evd = rcontrol_dat$evd, sdd = rcontrol_dat$sdd)
+
+rcontrol_dat
+```
+
+
+```{r}
+parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta',  "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', "log_lik")
+
+initFunc <-function (i) {
+  initList=list()
+  for (ll in 1:i){
+    initList[[ll]] = list(mu_alpha = runif(1,-.1,.1), 
+                          sd_alpha = runif(1,0,1),
+                          mu_threshold = runif(1,-0.5, 0.5), 
+                          sd_threshold = runif(1,0,1),
+                          mu_ndt = runif(1, -1.5, 0),
+                          sd_ndt = runif(1, 0, 1),
+                          mu_theta = runif(1,-0.5, -0.5), 
+                          sd_theta = runif(1,0,1),
+                          z_alpha = runif(length(tids),-0.1,0.1),
+                          z_theta = runif(length(tids),-0.1,0.1),
+                          z_threshold = runif(length(tids),-0.1,0.1),
+                          z_ndt = runif(length(tids),-0.1,0.1)
+                        
+    )
+  }
+  
+  return(initList)
+}
+```
+
+
+```{r}
+initFunc2 <-function (i) {
+  initList=list()
+  for (ll in 1:i){
+    initList[[ll]] = list(mu_alpha = runif(1,-.1,.1), 
+                          sd_alpha = runif(1,0,1),
+                          mu_threshold = runif(1,-1,1), 
+                          sd_threshold = runif(1,0,1),
+                          mu_ndt = runif(1,-1.5, 0), 
+                          sd_ndt = runif(1,0, 1),
+                          mu_theta = runif(1,-2, 2), 
+                          sd_theta = runif(1,0,1),
+                          z_alpha = runif(length(tids),-0.1,0.1),
+                          z_theta = runif(length(tids),-0.1,0.1),
+                          z_threshold = runif(length(tids),-0.1,0.1),
+                          z_ndt = runif(length(tids),-0.1,0.1)
+    )
+  }
+  
+  return(initList)
+}
+```
+
+
+
+
+
+```{r}
+dsamples <- stan(file = "MV_Laura.stan",  
+                data=dataList, 
+                pars=parameters,
+                iter=2000, 
+                chains=4,#If not specified, gives random inits
+                init = initFunc(4),
+                warmup = 1000,  # Stands for burn-in; Default = iter/2
+                seed = 12  # Setting seed; Default is random seed
+)
+```
+
+
+```{r}
+#parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj',"log_lik")
+
+rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_theta", "transf_mu_threshold","transf_mu_ndt", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "lp__"), inc_warmup = TRUE, nrow = 3)
+pairs(dsamples, pars = c("transf_mu_alpha","transf_mu_theta","transf_mu_threshold","transf_mu_ndt", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "lp__"))
+print(dsamples, pars = c("transf_mu_alpha", "transf_mu_theta", "transf_mu_threshold","transf_mu_ndt", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "lp__"))
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+ratios_cp <- neff_ratio(dsamples, pars = c("transf_mu_alpha","transf_mu_theta", "transf_mu_threshold","transf_mu_ndt", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "lp__"))
+df_ratios_cp <- as.data.frame(ratios_cp)
+print(df_ratios_cp)
+mcmc_neff(ratios_cp, size = 2)
+```
+
