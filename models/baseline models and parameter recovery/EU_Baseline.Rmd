@@ -1,3 +1,8 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
 ```{r}
 ############### 0 - safe choice A, 1 - risky choice B #####################
 library(rstan); rstan_options(javascript=FALSE)
@@ -69,13 +74,13 @@ parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_
 initFunc <-function (i) {
   initList=list()
   for (ll in 1:i){
-    initList[[ll]] = list(mu_alpha = runif(1,-.5,.5), 
+    initList[[ll]] = list(mu_alpha = runif(1,-1.4578,2.5413), 
                           sd_alpha = runif(1,0,1),
-                          mu_threshold = runif(1,-0.5, 0.5), 
+                          mu_threshold = runif(1,-0.5, 2.5), 
                           sd_threshold = runif(1,0,1),
                           mu_ndt = runif(1, -1.5, 0),
                           sd_ndt = runif(1, 0, 1),
-                          mu_theta = runif(1,-0.5, -0.5), 
+                          mu_theta = runif(1,-4, 6), 
                           sd_theta = runif(1,0,1),
                           z_alpha = runif(length(tids),-0.1,0.1),
                           z_theta = runif(length(tids),-0.1,0.1),
@@ -118,5 +123,31 @@ ratios_cp <- neff_ratio(dsamples, pars = c("transf_mu_alpha","transf_mu_theta", 
 df_ratios_cp <- as.data.frame(ratios_cp)
 print(df_ratios_cp)
 mcmc_neff(ratios_cp, size = 2)
+```
+
+```{r}
+library(ggplot2)
+
+# Assuming 'fit' is your fitted model
+samples_matrix <- as.matrix(dsamples)
+means <- colMeans(samples_matrix)
+hpd_interval <- t(apply(samples_matrix, 2, function(x) quantile(x, probs=c(0.025, 0.975))))
+
+parameters <- c("transf_mu_alpha", "transf_mu_theta", "transf_mu_threshold", 
+                "transf_mu_ndt", "sd_threshold", "sd_alpha", "sd_ndt", "sd_theta")
+
+# Loop through each parameter and plot
+for (param in parameters) {
+  p <- stan_dens(dsamples, pars = param) 
+  p <- p + 
+    geom_vline(aes(xintercept=means[param]), color="blue", linetype="dashed", size=1, alpha=0.7, show.legend = TRUE) +
+    geom_vline(aes(xintercept=hpd_interval[param, 1]), color="green", linetype="solid", size=1, alpha=0.5) +
+    geom_vline(aes(xintercept=hpd_interval[param, 2]), color="green", linetype="solid", size=1, alpha=0.5) +
+    labs(title=paste("Posterior distribution of", param))
+  
+  print(p)
+}
+
+
 ```
 

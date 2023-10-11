@@ -1,3 +1,8 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
 
 ```{r}
 ddm4 <- "
@@ -50,10 +55,10 @@ transformed parameters {
 	}
 }
 model {
-	alpha_v ~ normal(1, 5);
+	alpha_v ~ normal(0.5413, 2);
 	theta_v ~ normal(1, 5);
 	threshold_v ~ normal(1,3);
-	ndt_v ~ normal(1,1);
+	ndt_v ~ normal(0,1);
 
 
 	rt ~ wiener(threshold_t, ndt_t, starting_point, drift_ll);
@@ -153,10 +158,10 @@ initFunc <-function (i) {
   initList=list()
   for (ll in 1:i){
     initList[[ll]] = list(
-                          alpha_sbj = runif(1,-10,10),
-                          theta_v = runif(1,-0.5,0.5),
-                          threshold_v = runif(1,-0.5,0.5),
-                          ndt_v = runif(1,-1.5,0)
+                          alpha_sbj = runif(1,-5,5),
+                          theta_v = runif(1,-4,6),
+                          threshold_v = runif(1,-0.5,2.5),
+                          ndt_v = runif(1,-1.5, 0)
     )
   }
   return(initList)
