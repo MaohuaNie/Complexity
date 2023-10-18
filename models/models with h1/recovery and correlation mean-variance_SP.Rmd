@@ -144,11 +144,11 @@ initFunc <-function (i) {
   initList=list()
   for (ll in 1:i){
     initList[[ll]] = list(
-                          alpha_sbj = runif(1,-10,10),
-                          theta_v = runif(1,-0.001,0.001),
-                          threshold_v = runif(1,-0.001,0.001),
-                          ndt_v = runif(1,-1,-0.999),
-                          rel_sp = runif(1,-0.6,-0.4)
+                          alpha_sbj = runif(1,-5,5),
+                          theta_v = runif(1,-6,1),
+                          threshold_v = runif(1,-0.5,10),
+                          ndt_v = runif(1,-1.5,0),
+                          rel_sp = runif(1,-0.5,0.5)
     )
   }
   return(initList)
@@ -160,7 +160,7 @@ initFunc <-function (i) {
 
 ```{r warning=FALSE}
 # Set the number of iterations
-n_iter <- 1000
+n_iter <- 100
 
 
 `%+=%` = function(e1,e2) eval.parent(substitute(e1 <- e1 + e2))
@@ -226,7 +226,7 @@ for (i in 1:n_iter) {
                 refresh = 0
                 )
   
-  samples <- extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj', 'transf_rel_sp'))
+  samples <- rstan::extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj', 'transf_rel_sp'))
   
   
   # Store the outcome parameters for the current iteration

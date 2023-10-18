@@ -412,6 +412,14 @@ alpha_p_dev <- numeric(n_iter)
 
 alpha_p_set = numeric(n_iter)
 
+# Storage for results
+results_df_p <- data.frame(
+  True_alpha_p = numeric(n_iter),
+  Estimated_alpha_p = numeric(n_iter),
+  CI_alpha_p_Lower = numeric(n_iter),
+  CI_alpha_p_Upper = numeric(n_iter)
+)
+
 
 # Run the model for n_iter iterations
 for (i in 1:n_iter) {
@@ -428,7 +436,7 @@ for (i in 1:n_iter) {
   }
   alpha_p_set[i] = alpha_p
   
-  
+   
   
   for(n in 1:nrow(stim5)){
     cres <- rwiener(1,th_p, ndt_p, sp_p, theta_p * ((pb[n,1] * (ob[n,1]^alpha_p) + pb[n,2] * (ob[n,2]^alpha_p)) - (pa[n,1] * (oa[n,1]^alpha_p) + pa[n,2] * (oa[n,2]^alpha_p))))
@@ -471,7 +479,9 @@ for (i in 1:n_iter) {
                 )
   
   samples <- extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj'))
-  
+  extracted_params <- extract(dsamples)
+  Estimated_alpha_p = mean(extracted_params$alpha_sbj)
+  CI_alpha_p = quantile(extracted_params$alpha_sbj, probs = c(0.025, 0.975))
   
   # Store the outcome parameters for the current iteration
   th_p_recover[i] <- mean(samples$threshold_sbj)
@@ -492,7 +502,13 @@ for (i in 1:n_iter) {
   ndt_p_dev[i] <- abs(mean(samples$ndt_sbj)-ndt_p)/ndt_p
   alpha_p_dev[i] <- abs(mean(samples$alpha_sbj)-alpha_p)/alpha_p
 
-  
+      # Store the results in the data frame
+  results_df_p[i, ] <- c(
+    alpha_p,
+    Estimated_alpha_p,
+    CI_alpha_p[1],
+    CI_alpha_p[2]
+  )
   
   
 }
@@ -521,6 +537,31 @@ ggplot(data, aes(x = alpha_p_set, y = alpha_p_recover)) +
 
 ```
 
+
+```{r}
+# Create scatterplots for True vs. Estimated Intercepts with color-coded error bars
+plot_alpha_p <- ggplot(results_df_p, aes(x = True_alpha_p, y = Estimated_alpha_p)) +
+  geom_point(shape = 16, size = 2, color = "black", fill = "white") +
+  geom_abline(intercept = 0, slope = 1, color = "blue") +
+  geom_errorbar(
+    aes(ymin = results_df$CI_alpha_p_Lower, ymax = results_df$CI_alpha_p_Upper),
+    width = 0.03,
+     color = ifelse(results_df$CI_alpha_p_Lower > results_df$True_alpha_p | results_df$CI_alpha_p_Upper < results_df$True_alpha_p, "red", "blue"),
+    linetype = "solid",
+    size = 0.4,
+    alpha = 0.5
+  ) +
+  labs(
+    title = "Parameter Recovery: alpha_p",
+    x = "True alpha_p",
+    y = "Estimated alpha_p"
+  ) +
+  theme_minimal()  # Change to a minimal theme
+
+# Print the plot
+print(plot_alpha_p)
+
+```
 
 
 

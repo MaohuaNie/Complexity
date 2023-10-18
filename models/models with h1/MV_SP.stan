@@ -86,10 +86,10 @@ transformed parameters {
 	}
 }
 model {
-	mu_alpha ~ normal(1, 5);
+	mu_alpha ~ normal(0, 5);
 	mu_theta ~ normal(1, 5);
 	mu_threshold ~ normal(1, 3);
-	mu_ndt ~ normal(1, 1);
+	mu_ndt ~ normal(0, 1);
 	mu_rel_sp ~ normal(0, 1);
 
 	sd_alpha ~ normal(0, 5);
