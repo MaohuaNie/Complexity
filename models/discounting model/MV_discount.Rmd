@@ -67,7 +67,7 @@ initFunc <-function (i) {
                           sd_ndt = runif(1, 0, 1),
                           mu_theta = runif(1,-20, 1), 
                           sd_theta = runif(1,0,1),
-                          mu_beta = runif(1,-1, 1), 
+                          mu_beta = runif(1,-5, 5), 
                           sd_beta = runif(1, 0, 1),
                           z_alpha = runif(length(tids),-0.1,0.1),
                           z_theta = runif(length(tids),-0.1,0.1),
