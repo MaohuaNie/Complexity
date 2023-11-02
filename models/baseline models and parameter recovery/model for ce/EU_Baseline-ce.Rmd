@@ -1,0 +1,206 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r}
+############### 0 - safe choice A, 1 - risky choice B #####################
+library(rstan); rstan_options(javascript=FALSE)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = T)
+
+
+# Get list of files in 'data_2' folder with the pattern "riskytimed"
+files <- dir(path = "data_2", pattern="riskytimed")
+
+# Read all csv files in the list
+data_list <- lapply(paste0("data_2/", files), read.table, header = TRUE, skip = 0, fill = TRUE, sep= ";")
+
+# Concatenate rows of all items in the list into a data frame
+dat <- do.call("rbind", data_list)
+```
+
+```{r}
+# gamble characteristics
+dat$eva = dat$oa1*dat$pa1+dat$oa2*dat$pa2 + dat$oa3*dat$pa3+dat$oa4*dat$pa4
+dat$evb = dat$ob1*dat$pb1+dat$ob2*dat$pb2 + dat$ob3*dat$pb3+dat$ob4*dat$pb4
+dat$evd = dat$evb - dat$eva
+dat$sda = sqrt((dat$oa1-dat$eva)^2*dat$pa1 + (dat$oa2-dat$eva)^2*dat$pa2 + (dat$oa3-dat$eva)^2*dat$pa3 + (dat$oa4-dat$eva)^2*dat$pa4)
+dat$sdb = sqrt((dat$ob1-dat$evb)^2*dat$pb1 + (dat$ob2-dat$evb)^2*dat$pb2 + (dat$ob3-dat$evb)^2*dat$pb3 + (dat$ob4-dat$evb)^2*dat$pb4)
+dat$sdd = dat$sdb - dat$sda
+dat$evdummy = ifelse(dat$evd>0,1,0)
+
+```
+
+```{r}
+# transform to +/- 1; safe - 1, risky +1
+dat$cho <- ifelse(dat$choice==0,-1,ifelse(dat$choice==1,1,NA))
+
+ids <- unique(dat$id)
+for(j in 1:length(ids)){
+  dat$tid[dat$id==ids[j]] <- j
+}
+tids <- unique(dat$tid)
+# only control data
+control_dat <- dat[dat$cond=="control",]
+# remove fast RTs
+rcontrol_dat <- control_dat[control_dat$rt>1,]
+
+library(dplyr)
+
+
+rcontrol_dat <- rcontrol_dat %>%
+  rowwise() %>%
+  mutate(
+    oa_condition = sum(c_across(starts_with("oa")) == 0), 
+    ob_condition = sum(c_across(starts_with("ob")) == 0)
+  ) %>%
+  filter(
+    (oa_condition == 2 & ob_condition == 0) | 
+    (oa_condition == 0 & ob_condition == 2)
+  ) %>%
+  mutate(
+    oa_complex = ifelse(oa_condition == 2, -1, 1),
+    chose_complex = ifelse((oa_complex == 1 & choice == 0) | (oa_complex == -1 & choice == 1), 1, -1)
+  )
+
+
+
+```
+
+
+```{r}
+oa = as.matrix(rcontrol_dat[, c("oa1", "oa2", "oa3", "oa4")])
+ob = as.matrix(rcontrol_dat[, c("ob1", "ob2", "ob3", "ob4")])
+pa = as.matrix(rcontrol_dat[, c("pa1", "pa2", "pa3", "pa4")])
+pb = as.matrix(rcontrol_dat[, c("pb1", "pb2", "pb3", "pb4")])
+```
+
+```{r}
+dataList  = list(cho = rcontrol_dat$chose_complex,rt = rcontrol_dat$rt, participant = rcontrol_dat$tid,N=nrow(rcontrol_dat),  L = length(tids),starting_point=0.5, 
+                 oa = as.matrix(rcontrol_dat[, c("oa1", "oa2", "oa3", "oa4")]),
+                 ob = as.matrix(rcontrol_dat[, c("ob1", "ob2", "ob3", "ob4")]),
+                 pa = as.matrix(rcontrol_dat[, c("pa1", "pa2", "pa3", "pa4")]),
+                 pb = as.matrix(rcontrol_dat[, c("pb1", "pb2", "pb3", "pb4")]),
+                 compindex = rcontrol_dat$oa_complex
+                 )
+
+parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj',"log_lik")
+
+```
+
+```{r}
+initFunc <-function (i) {
+  initList=list()
+  for (ll in 1:i){
+    initList[[ll]] = list(mu_alpha = runif(1,-1.4578,2.5413), 
+                          sd_alpha = runif(1,0,1),
+                          mu_threshold = runif(1,-0.5, 2.5), 
+                          sd_threshold = runif(1,0,1),
+                          mu_ndt = runif(1, -1.5, 0),
+                          sd_ndt = runif(1, 0, 1),
+                          mu_theta = runif(1,0, 6), 
+                          sd_theta = runif(1,0,1),
+                          z_alpha = runif(length(tids),-0.1,0.1),
+                          z_theta = runif(length(tids),-0.1,0.1),
+                          z_threshold = runif(length(tids),-0.1,0.1),
+                          z_ndt = runif(length(tids),-0.1,0.1)
+                        
+    )
+  }
+  
+  return(initList)
+}
+```
+
+```{r}
+m <- stan_model("EU_Baseline ce.stan")
+dsamples <- sampling(m,  
+                data=dataList, 
+                pars=parameters,
+                iter=400, 
+                chains=4,#If not specified, gives random inits
+                init = initFunc(4),
+                warmup = 200,  # Stands for burn-in; Default = iter/2
+                seed = 12  # Setting seed; Default is random seed
+                #refresh = 0
+                )
+
+```
+
+```{r}
+
+rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt","transf_mu_theta", "sd_alpha","sd_threshold","sd_ndt",'sd_theta', "lp__"), inc_warmup = TRUE, nrow = 3)
+
+pairs(dsamples, pars = c( "transf_mu_alpha","transf_mu_threshold","transf_mu_ndt","transf_mu_theta", "sd_alpha","sd_threshold","sd_ndt",'sd_theta', "lp__"))
+print(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt","transf_mu_theta", "sd_alpha","sd_threshold","sd_ndt",'sd_theta', "lp__"))
+```
+
+
+```{r}
+library(bayesplot)
+ratios_cp <- neff_ratio(dsamples, pars = c("transf_mu_alpha","transf_mu_theta", "transf_mu_threshold","transf_mu_ndt", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "lp__"))
+df_ratios_cp <- as.data.frame(ratios_cp)
+print(df_ratios_cp)
+mcmc_neff(ratios_cp, size = 2)
+```
+
+```{r}
+library(ggplot2)
+library(tidyverse) # for the gather function
+
+samples_matrix <- as.matrix(dsamples)
+means <- colMeans(samples_matrix)
+hpd_interval <- t(apply(samples_matrix, 2, function(x) quantile(x, probs=c(0.025, 0.975))))
+
+
+
+parameters <- c("transf_mu_alpha", "transf_mu_theta", "transf_mu_threshold", 
+                "transf_mu_ndt")
+
+# Reshape data to a long format
+df_long <- as.data.frame(samples_matrix) %>%
+  gather(key = "parameter", value = "value", parameters)
+
+# Convert hpd_interval to a data frame and name the columns
+hpd_interval_sub <- hpd_interval[parameters, ]
+hpd_df <- as.data.frame(hpd_interval_sub)
+colnames(hpd_df) <- c("lower", "upper")
+rownames(hpd_df) <- parameters
+hpd_df$parameter <- rownames(hpd_df)
+
+
+
+# Aesthetic enhancements
+theme_set(theme_minimal(base_size = 14)) # Set the default theme
+
+custom_palette <- c("density_fill" = "lightgray", 
+                    "mean_line" = "blue", 
+                    "hpd_line" = "darkgreen")
+
+# Add text labels for mean, lower, and upper HPD values
+df_long <- df_long %>%
+  group_by(parameter) %>%
+  mutate(mean = means[parameter])
+
+hpd_df <- hpd_df %>%
+  mutate(mid = (lower + upper) / 2)
+
+p <- ggplot(df_long, aes(x = value)) + 
+  geom_density(aes(fill = "density_fill")) + 
+  scale_fill_manual(values = custom_palette, guide = FALSE) +
+  geom_vline(aes(xintercept = mean, color = "mean_line"), linetype = "dashed", size = 1, alpha = 0.7) +
+  geom_text(data = df_long, aes(x = mean, y = 0, label = round(mean, 2)), vjust = -0.5, hjust = 0.5, size = 4, color = custom_palette["mean_line"]) +
+  geom_vline(data = hpd_df, aes(xintercept = lower, color = "hpd_line"), linetype = "solid", size = 1, alpha = 0.5) +
+  geom_text(data = hpd_df, aes(x = lower, y = 0, label = round(lower, 2)), vjust = -0.5, hjust = -0.5, size = 4, color = custom_palette["hpd_line"]) +
+  geom_vline(data = hpd_df, aes(xintercept = upper, color = "hpd_line"), linetype = "solid", size = 1, alpha = 0.5) +
+  geom_text(data = hpd_df, aes(x = upper, y = 0, label = round(upper, 2)), vjust = -0.5, hjust = 1.5, size = 4, color = custom_palette["hpd_line"]) +
+  facet_wrap(~ parameter, scales = "free", ncol = 2) +
+  scale_color_manual(values = custom_palette, guide = FALSE) +
+  labs(title = "Posterior distributions")
+
+print(p)
+
+
+```
+

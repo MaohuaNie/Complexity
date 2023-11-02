@@ -9,7 +9,7 @@ data {
 	
 	real evd[N];
 	real sdd[N];
-	real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
+	//real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
 }
 parameters {
 	real mu_alpha;
@@ -63,7 +63,7 @@ transformed parameters {
 	transf_mu_theta = log(1+ exp(mu_theta));					
 	transf_mu_threshold = log(1+ exp(mu_threshold));
 	transf_mu_ndt = log(1 + exp(mu_ndt));
-	transf_mu_rel_sp = Phi(mu_rel_sp);
+	transf_mu_rel_sp = Phi(mu_rel_sp);  // (0,1)
 
 
 	for (l in 1:L) {

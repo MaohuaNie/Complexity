@@ -36,7 +36,7 @@ dat$evdummy = ifelse(dat$evd>0,1,0)
 ```{r}
 # transform to +/- 1; safe - 1, risky +1
 dat$cho <- ifelse(dat$choice==0,-1,ifelse(dat$choice==1,1,NA))
-dat$cho2 <- ifelse(dat$choice==0,1,ifelse(dat$choice==1,0,NA))
+
 ids <- unique(dat$id)
 for(j in 1:length(ids)){
   dat$tid[dat$id==ids[j]] <- j
@@ -47,12 +47,38 @@ control_dat <- dat[dat$cond=="control",]
 # remove fast RTs
 rcontrol_dat <- control_dat[control_dat$rt>1,]
 # only condition no time pressure
-dataList  = list(cho = rcontrol_dat$cho, accuracy_flipped = rcontrol_dat$cho2, rt = rcontrol_dat$rt, participant = rcontrol_dat$tid,N=nrow(rcontrol_dat),  L = length(tids),starting_point=0.5, evd = rcontrol_dat$evd, sdd = rcontrol_dat$sdd)
+
+```
+
+```{r}
+rcontrol_dat <- rcontrol_dat %>%
+  rowwise() %>%
+  mutate(
+    oa_condition = sum(c_across(starts_with("oa")) == 0), 
+    ob_condition = sum(c_across(starts_with("ob")) == 0)
+  ) %>%
+  filter(
+    (oa_condition == 2 & ob_condition == 0) | 
+    (oa_condition == 0 & ob_condition == 2)
+  ) %>%
+  mutate(
+    oa_complex = ifelse(oa_condition == 2, -1, 1),
+    evd = evd * (-oa_complex),
+    sdd = sdd * (-oa_complex),
+    chose_complex = ifelse((oa_complex == 1 & choice == 0) | (oa_complex == -1 & choice == 1), 1, -1)
+  )
+
+rcontrol_dat$cho2 <- ifelse(rcontrol_dat$chose_complex==-1,1,ifelse(rcontrol_dat$chose_complex==1,0,NA))
 ```
 
 
 
 ```{r}
+
+dataList  = list(cho = rcontrol_dat$chose_complex, accuracy_flipped = rcontrol_dat$cho2, rt = rcontrol_dat$rt, participant = rcontrol_dat$tid,N=nrow(rcontrol_dat),  L = length(tids), evd = rcontrol_dat$evd, sdd = rcontrol_dat$sdd)
+
+
+
 parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_rel_sp', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_rel_sp', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'rel_sp_sbj', "log_lik")
 
 initFunc <-function (i) {
@@ -89,10 +115,10 @@ m <- stan_model("MV_SP.stan")
 dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
-                iter=2000, 
+                iter=3000, 
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
-                warmup = 1000,  # Stands for burn-in; Default = iter/2
+                warmup = 1500,  # Stands for burn-in; Default = iter/2
                 seed = 12,  # Setting seed; Default is random seed
                 refresh = 0
                 )

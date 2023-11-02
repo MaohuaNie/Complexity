@@ -10,6 +10,7 @@ data {
   real ob[N,4];
   real pa[N,4];
   real pb[N,4];
+  int<lower=-1,upper=1> compindex[N];			// complex index of each trial
 	//real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
 }
 parameters {
@@ -71,7 +72,7 @@ transformed parameters {
 	for (n in 1:N) {
 		ua[n] = pa[n,1] * pow(oa[n,1],alpha_sbj[participant[n]]) + pa[n,2] * pow(oa[n,2],alpha_sbj[participant[n]]) + pa[n,3] * pow(oa[n,3],alpha_sbj[participant[n]]) + pa[n,4] * pow(oa[n,4],alpha_sbj[participant[n]]);
 		ub[n] = pb[n,1] * pow(ob[n,1],alpha_sbj[participant[n]]) + pb[n,2] * pow(ob[n,2],alpha_sbj[participant[n]]) + pb[n,3] * pow(ob[n,3],alpha_sbj[participant[n]]) + pb[n,4] * pow(ob[n,4],alpha_sbj[participant[n]]);
-		drift_t[n] = theta_sbj[participant[n]] * (ub[n] - ua[n]);
+		drift_t[n] = theta_sbj[participant[n]] * (ub[n] - ua[n])*compindex[n];
 		drift_ll[n] = drift_t[n]*cho[n];
 		threshold_t[n] = threshold_sbj[participant[n]];
 		ndt_t[n] = ndt_sbj[participant[n]];
