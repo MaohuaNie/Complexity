@@ -107,7 +107,7 @@ df <- rcontrol_dat %>%
 
 
 ```{r}
-# Assuming your dataframe is named df
+
 for(i in 1:nrow(df)) {
   if(df$oa_condition[i] == 0) {
     df$cho[i] <- -df$cho[i]
