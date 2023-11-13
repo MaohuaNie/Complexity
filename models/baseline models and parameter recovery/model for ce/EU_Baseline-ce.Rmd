@@ -58,31 +58,80 @@ rcontrol_dat <- rcontrol_dat %>%
   filter(
     (oa_condition == 2 & ob_condition == 0) | 
     (oa_condition == 0 & ob_condition == 2)
-  ) %>%
-  mutate(
-    oa_complex = ifelse(oa_condition == 2, -1, 1),
-    chose_complex = ifelse((oa_complex == 1 & choice == 0) | (oa_complex == -1 & choice == 1), 1, -1)
   )
 
 
 
 ```
 
-
 ```{r}
-oa = as.matrix(rcontrol_dat[, c("oa1", "oa2", "oa3", "oa4")])
-ob = as.matrix(rcontrol_dat[, c("ob1", "ob2", "ob3", "ob4")])
-pa = as.matrix(rcontrol_dat[, c("pa1", "pa2", "pa3", "pa4")])
-pb = as.matrix(rcontrol_dat[, c("pb1", "pb2", "pb3", "pb4")])
+rcontrol_dat
 ```
 
 ```{r}
-dataList  = list(cho = rcontrol_dat$chose_complex,rt = rcontrol_dat$rt, participant = rcontrol_dat$tid,N=nrow(rcontrol_dat),  L = length(tids),starting_point=0.5, 
-                 oa = as.matrix(rcontrol_dat[, c("oa1", "oa2", "oa3", "oa4")]),
-                 ob = as.matrix(rcontrol_dat[, c("ob1", "ob2", "ob3", "ob4")]),
-                 pa = as.matrix(rcontrol_dat[, c("pa1", "pa2", "pa3", "pa4")]),
-                 pb = as.matrix(rcontrol_dat[, c("pb1", "pb2", "pb3", "pb4")]),
-                 compindex = rcontrol_dat$oa_complex
+library(dplyr)
+library(stringr)
+
+
+df <- rcontrol_dat %>%
+  # Swap values if oa_condition is not 0
+  rowwise() %>%
+  mutate(
+    temp_oa1 = if_else(oa_condition != 0, ob1, oa1),
+    temp_oa2 = if_else(oa_condition != 0, ob2, oa2),
+    temp_oa3 = if_else(oa_condition != 0, ob3, oa3),
+    temp_oa4 = if_else(oa_condition != 0, ob4, oa4),
+    temp_pa1 = if_else(oa_condition != 0, pb1, pa1),
+    temp_pa2 = if_else(oa_condition != 0, pb2, pa2),
+    temp_pa3 = if_else(oa_condition != 0, pb3, pa3),
+    temp_pa4 = if_else(oa_condition != 0, pb4, pa4),
+    temp_ob1 = if_else(oa_condition != 0, oa1, ob1),
+    temp_ob2 = if_else(oa_condition != 0, oa2, ob2),
+    temp_ob3 = if_else(oa_condition != 0, oa3, ob3),
+    temp_ob4 = if_else(oa_condition != 0, oa4, ob4),
+    temp_pb1 = if_else(oa_condition != 0, pa1, pb1),
+    temp_pb2 = if_else(oa_condition != 0, pa2, pb2),
+    temp_pb3 = if_else(oa_condition != 0, pa3, pb3),
+    temp_pb4 = if_else(oa_condition != 0, pa4, pb4)
+  ) %>%
+  ungroup() %>%
+  # Rename columns
+  #select(-starts_with("oa"), -starts_with("ob"), -starts_with("pa"), -starts_with("pb")) %>%
+  rename_with(~ str_replace(., "temp_oa", "oc"), starts_with("temp_oa")) %>%
+  rename_with(~ str_replace(., "temp_pa", "pc"), starts_with("temp_pa")) %>%
+  rename_with(~ str_replace(., "temp_ob", "oe"), starts_with("temp_ob")) %>%
+  rename_with(~ str_replace(., "temp_pb", "pe"), starts_with("temp_pb"))
+
+
+```
+
+
+```{r}
+# Assuming your dataframe is named df
+for(i in 1:nrow(df)) {
+  if(df$oa_condition[i] == 0) {
+    df$cho[i] <- -df$cho[i]
+  } else if(df$oa_condition[i] == 2) {
+  }
+}
+
+```
+
+
+
+```{r}
+oc = as.matrix(df[, c("oc1", "oc2", "oc3", "oc4")])
+oe = as.matrix(df[, c("oe1", "oe2")])
+pc = as.matrix(df[, c("pc1", "pc2", "pc3", "pc4")])
+pe = as.matrix(df[, c("pe1", "pe2")])
+```
+
+```{r}
+dataList  = list(cho = df$cho,rt = df$rt, participant = df$tid,N=nrow(df),  L = length(tids),starting_point=0.5, 
+                 oc = as.matrix(df[, c("oc1", "oc2", "oc3", "oc4")]),
+                 oe = as.matrix(df[, c("oe1", "oe2")]),
+                 pc = as.matrix(df[, c("pc1", "pc2", "pc3", "pc4")]),
+                 pe = as.matrix(df[, c("pe1", "pe2")])
                  )
 
 parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj',"log_lik")
@@ -118,10 +167,10 @@ m <- stan_model("EU_Baseline ce.stan")
 dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
-                iter=400, 
+                iter=1000, 
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
-                warmup = 200,  # Stands for burn-in; Default = iter/2
+                warmup = 500,  # Stands for burn-in; Default = iter/2
                 seed = 12  # Setting seed; Default is random seed
                 #refresh = 0
                 )
