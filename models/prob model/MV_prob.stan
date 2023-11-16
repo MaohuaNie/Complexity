@@ -8,7 +8,7 @@ data {
 	
 	real evd[N];
 	real sdd[N];
-	
+	real trialtype[N];          // 1 rl -1 lr 0 ns
 	real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
 
 }
@@ -17,7 +17,7 @@ parameters {
 	real mu_theta;
 	real mu_threshold;
 	real mu_ndt;
-	real mu_beta; // discounting effect parameter
+	real mu_delta; // discounting effect parameter
 
 	
 
@@ -25,7 +25,7 @@ parameters {
 	real<lower=0> sd_theta;
 	real<lower=0> sd_threshold;
 	real<lower=0> sd_ndt;
-	real<lower=0> sd_beta;
+	real<lower=0> sd_delta;
 
 	
 	
@@ -33,7 +33,7 @@ parameters {
 	real z_threshold[L];
 	real z_alpha[L];
 	real z_ndt[L];
-	real z_beta[L];
+	real z_delta[L];
 
 
 }
@@ -43,7 +43,7 @@ transformed parameters {
 	real drift_t[N];								// trial-by-trial drift rate for predictions
 	real<lower=0> threshold_t[N];					// trial-by-trial threshold
 	real<lower=0> ndt_t[N];							// trial-by-trial ndt
-	real evd_discount[N];
+
 
 
 
@@ -53,7 +53,7 @@ transformed parameters {
 	real<lower=0> theta_sbj[L];
 	real<lower=0> threshold_sbj[L];
 	real<lower=0> ndt_sbj[L];
-	real beta_sbj[L];
+	real delta_sbj[L];
 
 
 
@@ -61,7 +61,7 @@ transformed parameters {
 	real transf_mu_theta;
 	real transf_mu_threshold;
 	real transf_mu_ndt;
-	real transf_mu_beta;
+	real transf_mu_delta;
 
 
 
@@ -69,7 +69,7 @@ transformed parameters {
 	transf_mu_theta = log(1+ exp(mu_theta));					
 	transf_mu_threshold = log(1+ exp(mu_threshold));
 	transf_mu_ndt = log(1 + exp(mu_ndt));
-	transf_mu_beta = mu_beta;
+	transf_mu_delta = mu_delta;
 
 
 
@@ -78,14 +78,13 @@ transformed parameters {
 		theta_sbj[l] = log(1 + exp(mu_theta + z_theta[l]*sd_theta));
 		threshold_sbj[l] = log(1 + exp(mu_threshold + z_threshold[l]*sd_threshold));
 		ndt_sbj[l] = log(1 + exp(mu_ndt + z_ndt[l]*sd_ndt));
-		beta_sbj[l] = mu_beta + z_beta[l]*sd_beta;
+		delta_sbj[l] = mu_delta + z_delta[l]*sd_delta;
   
 
 	}
 
 	for (n in 1:N) {
-	  evd_discount[n] = evd[n] + beta_sbj[participant[n]];
-		drift_t[n] = theta_sbj[participant[n]] *  (evd_discount[n] + alpha_sbj[participant[n]] * sdd[n]);
+		drift_t[n] = theta_sbj[participant[n]] *  (evd[n] + alpha_sbj[participant[n]] * sdd[n] + delta_sbj[participant[n]]*trialtype[n]);
 		drift_ll[n] = drift_t[n]*cho[n];
 		threshold_t[n] = threshold_sbj[participant[n]];
 		ndt_t[n] = ndt_sbj[participant[n]];
@@ -98,14 +97,14 @@ model {
 	mu_theta ~ normal(1, 5);
 	mu_threshold ~ normal(1, 3);
 	mu_ndt ~ normal(0, 1);
-	mu_beta ~ normal(0, 5);
+	mu_delta ~ normal(0, 5);
 
 
 	sd_alpha ~ normal(0, 5);
 	sd_theta ~ normal(0, 5);
 	sd_threshold ~ normal(0,3);
 	sd_ndt ~ normal(0,1);
-	sd_beta ~ normal(0,5);
+	sd_delta ~ normal(0,5);
 
 	
 	
@@ -113,7 +112,7 @@ model {
 	z_threshold ~ normal(0, 1);
 	z_ndt ~ normal(0, 1);
 	z_theta ~ normal(0, 1);
-	z_beta ~ normal(0, 1);
+	z_delta ~ normal(0, 1);
 
   
 	  

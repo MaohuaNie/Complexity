@@ -9,6 +9,7 @@ data {
 	real evd[N];
 	real sdd[N];
 	real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
+	int<lower=-1,upper=1> con[N];  // condition index, -1 = simple vs. simple, 1 = complex vs. complex
 }
 
 parameters {
@@ -16,6 +17,7 @@ parameters {
 	real mu_theta;
 	real mu_threshold;
 	real mu_ndt;
+	real mu_delta;
 
 	
 
@@ -23,6 +25,7 @@ parameters {
 	real<lower=0> sd_theta;
 	real<lower=0> sd_threshold;
 	real<lower=0> sd_ndt;
+	real<lower=0> sd_delta;
 
 	
 	
@@ -30,6 +33,7 @@ parameters {
 	real z_threshold[L];
 	real z_alpha[L];
 	real z_ndt[L];
+	real z_delta[L];
 
 
 }
@@ -48,6 +52,7 @@ transformed parameters {
 	real<lower=0> theta_sbj[L];
 	real<lower=0> threshold_sbj[L];
 	real<lower=0> ndt_sbj[L];
+	real delta_sbj[L];
 	
 	
 
@@ -55,6 +60,7 @@ transformed parameters {
 	real transf_mu_theta;
 	real transf_mu_threshold;
 	real transf_mu_ndt;
+	real transf_mu_delta;
 
 
 
@@ -62,10 +68,12 @@ transformed parameters {
 	transf_mu_theta = log(1+ exp(mu_theta));					
 	transf_mu_threshold = log(1+ exp(mu_threshold));
 	transf_mu_ndt = log(1 + exp(mu_ndt));
+	transf_mu_delta = mu_delta;
 
 
 
 	for (l in 1:L) {
+	  delta_sbj[l] = mu_delta + z_delta[l]*sd_delta;
 		alpha_sbj[l] = mu_alpha + z_alpha[l]*sd_alpha;
 		theta_sbj[l] = log(1 + exp(mu_theta + z_theta[l]*sd_theta));
 		threshold_sbj[l] = log(1 + exp(mu_threshold + z_threshold[l]*sd_threshold));
@@ -75,7 +83,7 @@ transformed parameters {
 	}
 
 	for (n in 1:N) {
-		drift_t[n] = theta_sbj[participant[n]] *  (evd[n] + alpha_sbj[participant[n]] * sdd[n]);
+		drift_t[n] = (theta_sbj[participant[n]] + delta_sbj[participant[n]]*con[n])*(evd[n] + alpha_sbj[participant[n]] * sdd[n]);
 		drift_ll[n] = drift_t[n]*cho[n];
 		threshold_t[n] = threshold_sbj[participant[n]];
 		ndt_t[n] = ndt_sbj[participant[n]];
@@ -91,6 +99,7 @@ model {
 	mu_theta ~ normal(1, 5);
 	mu_threshold ~ normal(1, 3);
 	mu_ndt ~ normal(0, 1);
+	mu_delta ~ normal(0, 5);
 	
 
 
@@ -98,6 +107,7 @@ model {
 	sd_theta ~ normal(0, 5);
 	sd_threshold ~ normal(0,3);
 	sd_ndt ~ normal(0,1);
+	sd_delta ~ normal(0,1);
 
 
 	
@@ -105,6 +115,7 @@ model {
 	z_threshold ~ normal(0, 1);
 	z_ndt ~ normal(0, 1);
 	z_theta ~ normal(0, 1);
+	z_delta ~ normal(0, 1);
 	
 
 
