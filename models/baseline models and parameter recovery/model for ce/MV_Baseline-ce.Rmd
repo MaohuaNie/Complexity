@@ -3,74 +3,51 @@ output:
   html_document: default
   pdf_document: default
 ---
-```{r warning = F}
+```{r message=FALSE, warning=FALSE}
 
 ############### 0 - safe choice A, 1 - risky choice B #####################
 library(rstan); rstan_options(javascript=FALSE)
 library(bayesplot)
+library(dplyr)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = T)
 
-# Get list of files in 'data_2' folder with the pattern "riskytimed"
-files <- dir(path = "data_2", pattern="riskytimed")
+dat <- read.csv('final_data.csv')
 
-# Read all csv files in the list
-data_list <- lapply(paste0("data_2/", files), read.table, header = TRUE, skip = 0, fill = TRUE, sep= ";")
+dat = dat %>%
+  mutate(cho = 0,
+         cho = ifelse(response == "f", 1*risk_index, cho), 
+         cho = ifelse(response == "j", -1*risk_index, cho))
 
-# Concatenate rows of all items in the list into a data frame
-dat <- do.call("rbind", data_list)
-
-```
+dat <- dat %>%
+  filter(skew != 'control')
 
 
-```{r}
-# gamble characteristics
-dat$eva = dat$oa1*dat$pa1+dat$oa2*dat$pa2 + dat$oa3*dat$pa3+dat$oa4*dat$pa4
-dat$evb = dat$ob1*dat$pb1+dat$ob2*dat$pb2 + dat$ob3*dat$pb3+dat$ob4*dat$pb4
-dat$evd = dat$evb - dat$eva
-dat$sda = sqrt((dat$oa1-dat$eva)^2*dat$pa1 + (dat$oa2-dat$eva)^2*dat$pa2 + (dat$oa3-dat$eva)^2*dat$pa3 + (dat$oa4-dat$eva)^2*dat$pa4)
-dat$sdb = sqrt((dat$ob1-dat$evb)^2*dat$pb1 + (dat$ob2-dat$evb)^2*dat$pb2 + (dat$ob3-dat$evb)^2*dat$pb3 + (dat$ob4-dat$evb)^2*dat$pb4)
-dat$sdd = dat$sdb - dat$sda
-dat$evdummy = ifelse(dat$evd>0,1,0)
-
-# transform to +/- 1; safe - 1, risky +1
-dat$cho <- ifelse(dat$choice==0,-1,ifelse(dat$choice==1,1,NA))
-ids <- unique(dat$id)
+ids <- unique(dat$subject)
 for(j in 1:length(ids)){
-  dat$tid[dat$id==ids[j]] <- j
+  dat$tid[dat$subject==ids[j]] <- j
 }
 tids <- unique(dat$tid)
-# only control data
-control_dat <- dat[dat$cond=="control",]
-# remove fast RTs
-rcontrol_dat <- control_dat[control_dat$rt>1,]
 
-library(dplyr)
+dat <- dat %>%
+  filter(test_part == 'cs' | test_part == 'sc')
 
+dat$rt <- dat$rt/1000
 
-rcontrol_dat <- rcontrol_dat %>%
-  rowwise() %>%
+dat <- dat %>%
   mutate(
-    oa_condition = sum(c_across(starts_with("oa")) == 0), 
-    ob_condition = sum(c_across(starts_with("ob")) == 0)
-  ) %>%
-  filter(
-    (oa_condition == 2 & ob_condition == 0) | 
-    (oa_condition == 0 & ob_condition == 2)
-  ) %>%
-  mutate(
-    oa_complex = ifelse(oa_condition == 2, -1, 1),
-    evd = evd * (-oa_complex),
-    sdd = sdd * (-oa_complex),
-    chose_complex = ifelse((oa_complex == 1 & choice == 0) | (oa_complex == -1 & choice == 1), 1, -1)
+    oa_complex = ifelse(test_part == 'cs', 1, -1),
+    evd = evd * oa_complex,
+    sdd = sdd * oa_complex,
+    chose_complex = ifelse((oa_complex == 1 & cho == 1) | (oa_complex == -1 & cho == -1), 1, -1)
   )
 
-rcontrol_dat
 ```
 
 
+
 ```{r}
-dataList  = list(cho = rcontrol_dat$chose_complex, rt = rcontrol_dat$rt, participant = rcontrol_dat$tid, N=nrow(rcontrol_dat),  L = length(tids), starting_point=0.5, evd = rcontrol_dat$evd, sdd = rcontrol_dat$sdd)
+dataList  = list(cho = dat$chose_complex, rt = dat$rt, participant = dat$tid, N=nrow(dat),  L = length(tids), starting_point=0.5, evd = dat$evd, sdd = dat$sdd)
 ```
 
 
@@ -102,16 +79,16 @@ initFunc <-function (i) {
 ```
 
 
-```{r warning=F}
+```{r message=FALSE, warning=FALSE}
 
 m <- stan_model("MV_Baseline ce.stan")
 dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
-                iter=2000, 
+                iter=1000, 
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
-                warmup = 1000,  # Stands for burn-in; Default = iter/2
+                warmup = 500,  # Stands for burn-in; Default = iter/2
                 seed = 12, # Setting seed; Default is random seed
                 refresh = 0
                 )
@@ -119,7 +96,7 @@ dsamples <- sampling(m,
 ```
 
 
-```{r, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 #parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj',"log_lik")
 
 rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_theta", "transf_mu_threshold","transf_mu_ndt", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "lp__"), inc_warmup = TRUE, nrow = 3)
@@ -130,17 +107,9 @@ print(dsamples, pars = c("transf_mu_alpha", "transf_mu_theta", "transf_mu_thresh
 
 
 
-```{r}
-parameters = c("transf_mu_alpha","transf_mu_theta", "transf_mu_threshold","transf_mu_ndt", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta')
-ratios_cp <- neff_ratio(dsamples, pars = c("transf_mu_alpha","transf_mu_theta", "transf_mu_threshold","transf_mu_ndt", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta'))
-df_ratios_cp <- as.data.frame(ratios_cp)
-print(df_ratios_cp)
-mcmc_neff(ratios_cp, size = 2)
-```
 
 
-
-```{r}
+```{r message=FALSE, warning=FALSE}
 library(ggplot2)
 library(tidyverse) # for the gather function
 
@@ -198,30 +167,12 @@ print(p)
 
 ```
 
-
-
 ```{r}
-library(RWiener)
-library(purrr) # if not already loaded
-rcontrol_dat <- rcontrol_dat %>%
-  mutate(drift = (means["transf_mu_theta"] * (evd + means["transf_mu_alpha"] * sdd))*cho)
 
-simulated_data <- rcontrol_dat %>%
-  rowwise() %>%
-  mutate(simulated = list(rep(drift, 10))) %>%
-  ungroup() %>%
-  mutate(simulated = map(simulated, ~ rwiener(10, 
-                                              means["transf_mu_threshold"], 
-                                              means["transf_mu_ndt"], 
-                                              0.5, 
-                                              .)))
-
-# If you want to get a long format data frame with one row for each simulated value:
-simulated_long <- simulated_data %>%
-  unnest(cols = c(simulated))
-hist(simulated_long$q, xlim=c(0, 30))
-hist(rcontrol_dat$rt, xlim=c(0,30))
 ```
+
+
+
 
 
 

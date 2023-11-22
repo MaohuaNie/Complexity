@@ -3,12 +3,12 @@ data {
 	int<lower=1> L;									// number of participants
 	int<lower=1, upper=L> participant[N];			// level (participant)
 
-	int<lower=-1,upper=1> cho[N];				// accuracy (-1, 1)
+	int<lower=-1,upper=1> cho[N];				// accuracy (1, -1)
 	real<lower=0> rt[N];							// rt
-  real oa[N,4];
-  real ob[N,4];
-  real pa[N,4];
-  real pb[N,4];
+  real oa[N,2];
+  real ob[N,2];
+  real pa[N,2];
+  real pb[N,2];
 	real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
 	int<lower=-1,upper=1> con[N];  // condition index, -1 = simple vs. simple, 1 = complex vs. complex
 }
@@ -17,20 +17,20 @@ parameters {
 	real mu_theta;
 	real mu_threshold;
 	real mu_ndt;
-	real mu_delta;
+	real mu_delta_theta;
 
 	real<lower=0> sd_alpha;
 	real<lower=0> sd_theta;
 	real<lower=0> sd_threshold;
 	real<lower=0> sd_ndt;
-	real<lower=0> sd_delta;
+	real<lower=0> sd_delta_theta;
 	
 	
 	real z_theta[L];
 	real z_threshold[L];
 	real z_alpha[L];
 	real z_ndt[L];
-	real z_delta[L];
+	real z_delta_theta[L];
 }
 transformed parameters {
 	real drift_ll[N];								// trial-by-trial drift rate for likelihood (incorporates accuracy)
@@ -44,22 +44,22 @@ transformed parameters {
 	real<lower=0> theta_sbj[L];
 	real<lower=0> threshold_sbj[L];
 	real<lower=0> ndt_sbj[L];
-	real delta_sbj[L];
+	real delta_theta_sbj[L];
 
 	real transf_mu_alpha;
 	real transf_mu_theta;
 	real transf_mu_threshold;
 	real transf_mu_ndt;
-	real transf_mu_delta;
+	real transf_mu_delta_theta;
 
 	transf_mu_alpha = log(1+ exp(mu_alpha));						// for the output
 	transf_mu_theta = log(1+ exp(mu_theta));					
 	transf_mu_threshold = log(1+ exp(mu_threshold));
 	transf_mu_ndt = log(1 + exp(mu_ndt));
-	transf_mu_delta = mu_delta;
+	transf_mu_delta_theta = mu_delta_theta;
 
 	for (l in 1:L) {
-	  delta_sbj[l] = mu_delta + z_delta[l]*sd_delta;
+	  delta_theta_sbj[l] = mu_delta_theta + z_delta_theta[l]*sd_delta_theta;
 	  alpha_sbj[l] = log(1 + exp(mu_alpha + z_alpha[l]*sd_alpha));
 		theta_sbj[l] = log(1 + exp(mu_theta + z_theta[l]*sd_theta));
 		threshold_sbj[l] = log(1 + exp(mu_threshold + z_threshold[l]*sd_threshold));
@@ -67,9 +67,9 @@ transformed parameters {
 	}
 
 	for (n in 1:N) {
-		ua[n] = pa[n,1] * pow(oa[n,1],alpha_sbj[participant[n]]) + pa[n,2] * pow(oa[n,2],alpha_sbj[participant[n]]) + pa[n,3] * pow(oa[n,3],alpha_sbj[participant[n]]) + pa[n,4] * pow(oa[n,4],alpha_sbj[participant[n]]);
-		ub[n] = pb[n,1] * pow(ob[n,1],alpha_sbj[participant[n]]) + pb[n,2] * pow(ob[n,2],alpha_sbj[participant[n]]) + pb[n,3] * pow(ob[n,3],alpha_sbj[participant[n]]) + pb[n,4] * pow(ob[n,4],alpha_sbj[participant[n]]);
-		drift_t[n] = (theta_sbj[participant[n]] + + delta_sbj[participant[n]]*con[n]) * (ub[n] - ua[n]);
+		ua[n] = pa[n,1] * pow(oa[n,1],alpha_sbj[participant[n]]) + pa[n,2] * pow(oa[n,2],alpha_sbj[participant[n]]);
+		ub[n] = pb[n,1] * pow(ob[n,1],alpha_sbj[participant[n]]) + pb[n,2] * pow(ob[n,2],alpha_sbj[participant[n]]);
+		drift_t[n] = (theta_sbj[participant[n]] + delta_theta_sbj[participant[n]]*con[n]) * (ua[n] - ub[n]);
 		drift_ll[n] = drift_t[n]*cho[n];
 		threshold_t[n] = threshold_sbj[participant[n]];
 		ndt_t[n] = ndt_sbj[participant[n]];
@@ -80,7 +80,7 @@ model {
 	mu_theta ~ normal(1, 5);
 	mu_threshold ~ normal(1, 3);
 	mu_ndt ~ normal(0, 1);
-	mu_delta ~ normal(0, 5);
+	mu_delta_theta ~ normal(0, 5);
 	
 
 
@@ -88,7 +88,7 @@ model {
 	sd_theta ~ normal(0, 5);
 	sd_threshold ~ normal(0,3);
 	sd_ndt ~ normal(0,1);
-	sd_delta ~ normal(0,1);
+	sd_delta_theta ~ normal(0,1);
 
 
 	
@@ -96,7 +96,7 @@ model {
 	z_threshold ~ normal(0, 1);
 	z_ndt ~ normal(0, 1);
 	z_theta ~ normal(0, 1);
-	z_delta ~ normal(0, 1);
+	z_delta_theta ~ normal(0, 1);
 
 	
 

@@ -1,0 +1,446 @@
+---
+title: "Data_preparation"
+author: "Maohua Nie"
+date: "2023-11-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+# File names
+file_names <- paste0("csv_data/jatos_results_", 1:19, ".csv")
+
+# Read files and merge
+raw_data <- do.call(rbind, lapply(file_names, read.csv, stringsAsFactors = FALSE))
+
+
+
+```
+
+### Read data
+```{r}
+library(tidyverse)
+library(jsonlite)
+library(dplyr)
+library(lubridate)
+library(data.table)
+library(magrittr)
+library(jsonlite)
+
+#Load the probabilities and outcomes datasets
+control_int_data <- read.csv("stimuli_control_int.csv", header = TRUE)
+lr_int_data <- read.csv("stimuli_lr_int.csv", header = TRUE)
+noskew_int_data <- read.csv("stimuli_noskew_int.csv", header = TRUE)
+rl_int_data <- read.csv("stimuli_rl_int.csv", header = TRUE)
+
+```
+
+### Add date and time
+
+```{r}
+#Show full numbers
+options(scipen = 999)
+
+
+
+#Convert time
+#raw_data$start_time = raw_data$start_time / 1000
+
+#Change tge date / time format
+raw_data <- raw_data %>%
+  mutate(start_time = as.POSIXct(raw_data$start_time, origin="1970-01-01", tz="GMT")) %>%
+  rename("date" = "start_time")
+
+#Convert time_elapsed into XMinutes XSecondes format 
+#raw_data <- raw_data %>% mutate(time_elapsed = seconds_to_period(time_elapsed/1000))
+
+```
+
+
+
+```{r}
+library(dplyr)
+
+
+
+# Calculate question count for each subject
+question_counts <- raw_data %>%
+  group_by(subject) %>%
+  summarize(question_count = sum(trial_type_label == "question"))
+question_counts
+# Join the question counts back with the original data
+raw_data_with_counts <- raw_data %>%
+  left_join(question_counts, by = "subject")
+
+# Filter for subjects with question_count less than 6
+raw_data1 <- raw_data_with_counts %>%
+  filter(question_count <= 6)
+
+
+
+```
+
+### Merge the csv data frames 
+
+```{r}
+#Prepare the files for merging: 
+## add a variable called "test_part" to fit the final dataframe
+## modify the number of trial to fit the format of the final dataframe
+## keep only the variables, which are needed
+lr_int_data <- lr_int_data %>%
+  mutate(test_part = "lr",
+         trial_numb = row_number()) %>%
+  select(trial_numb, test_part, P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, x1, y1, h1, i1, j1, k1, x2, y2, h2, i2, j2, k2, eva, evb, evd, sda, sdb, sdd)
+
+noskew_int_data <- noskew_int_data%>%
+  mutate(test_part = "ns",
+         trial_numb = row_number()) %>%
+  select(trial_numb, test_part, P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, x1, y1, h1, i1, j1, k1, x2, y2, h2, i2, j2, k2,eva, evb, evd, sda, sdb, sdd)
+
+rl_int_data <- rl_int_data %>%
+  mutate(test_part = "rl",
+         trial_numb = row_number()) %>%
+  select(trial_numb, test_part, P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, x1, y1, h1, i1, j1, k1, x2, y2, h2, i2, j2, k2, eva, evb, evd, sda, sdb, sdd)
+
+control_int_data <- control_int_data %>%
+  mutate(test_part = "control", 
+         trial_numb = row_number()) %>%
+  select(trial_numb, test_part, P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, x1, y1, h1, i1, j1, k1, x2, y2, h2, i2, j2, k2, eva, evb, evd, sda, sdb, sdd)
+
+#Combine the dataframes
+pb_data_combined = bind_rows(lr_int_data, noskew_int_data, rl_int_data, control_int_data)
+
+names(pb_data_combined)[names(pb_data_combined) == "test_part"] <- "skew"
+
+```
+
+
+
+
+
+### Merge datasets from participants (raw_data) and probabilities (pb_data_combined)
+```{r}
+#Prepare raw_data for merging
+raw_data1 = raw_data1 %>%
+  mutate(trial_numb = gsub(".*?(\\d+).*", "\\1", optionA_Stimulus))
+
+
+#Match the type of object, in order to merge them
+pb_data_combined$trial_numb = as.character(pb_data_combined$trial_numb)
+
+#Merge filtered by trial number and type of test
+raw_data_merged <- raw_data1 %>%
+  full_join(pb_data_combined, by=c("skew","trial_numb"))
+
+
+
+```
+
+
+
+### Changing the order of the variables
+```{r}
+
+#Change the order of columns the dataframe 
+# I added a few variables, needed for some tests later
+cleaned_data <- raw_data_merged %>%
+  select(date, subject, time_elapsed, trial_type_label, test_part, skew, risk_index, response, optionA_Stimulus, optionB_Stimulus, rt,  P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, eva, evb, evd, sda, sdb, sdd, BNT1_answer, BNT2_answer, BNT3_answer, BNT4_answer, accuracy_BNT,accuracy_HMT, total_bonus, Bonus_pay)
+
+```
+
+
+
+```{r}
+cleaned_data$rt = as.numeric(cleaned_data$rt)
+#quantile(cleaned_data$rt, 0.05, na.rm = TRUE)
+#quantile(cleaned_data$rt, 0.95, na.rm = TRUE)
+library(dplyr)
+
+cleaned_data1 <- cleaned_data %>%
+  filter(trial_type_label == 'test', 
+         rt >= quantile(rt, 0.05, na.rm = TRUE), 
+         rt <= quantile(rt, 0.95, na.rm = TRUE), 
+         rt >= 1000)
+
+```
+
+
+
+
+
+### Control Trials Check
+```{r}
+library(dplyr)
+
+cleaned_data_test <- cleaned_data %>%
+  select(subject, test_part, risk_index, response, evd, skew) %>%
+  filter(skew == "control") %>%
+  mutate(true_response = response)
+
+cleaned_data_test <- cleaned_data_test %>%
+  mutate(true_response = case_when(
+    risk_index == 1  ~ response,
+    risk_index == -1 ~ if_else(response == "f", "j", "f"),
+    TRUE             ~ true_response  # This line keeps the original value in other cases
+  ))
+
+
+cleaned_data_test <- cleaned_data_test %>%
+  mutate(accuracy = case_when(
+    evd > 0 & true_response == 'f' ~ 1,
+    evd < 0 & true_response == 'j' ~ 1,
+    TRUE ~ 0
+  ))
+
+cleaned_data_test <- cleaned_data_test %>% filter(!is.na(risk_index))
+
+cleaned_data_test <- cleaned_data_test %>%
+  filter(test_part %in% c('ss', 'cc') )
+
+
+mean_accuracy_per_participant_conditions <- cleaned_data_test %>%
+  group_by(subject, test_part) %>%
+  summarize(mean_accuracy = mean(accuracy)) %>%
+  ungroup()
+
+final_accuracy_data <- mean_accuracy_per_participant_conditions %>%
+  pivot_wider(names_from = test_part, values_from = mean_accuracy, 
+              names_prefix = "accuracy_")
+
+
+final_accuracy_data <- final_accuracy_data %>%
+  mutate(accuracy_diff = accuracy_ss - accuracy_cc)
+
+final_accuracy_data
+
+
+
+
+
+
+
+```
+
+
+
+### Set up final dataframe 
+```{r}
+# new table, only have the id, test part, P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, eva, evb, evd, sda, sdb, sdd, cho, rt
+
+#This dataframe has been cleaned and removed the ones, who did not pass the previous tests 
+final_data <- cleaned_data1 %>%
+  select(subject, test_part,skew, P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, eva, evb, evd, sda, sdb, sdd, risk_index, response, rt)
+
+final_data_all <- cleaned_data %>%
+  select(subject, test_part,skew, P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, eva, evb, evd, sda, sdb, sdd, risk_index, response, rt)
+
+
+final_data <- final_data %>%
+  filter(test_part %in% c('cs', 'sc','ss', 'cc'))
+
+final_data_all <- final_data_all %>%
+  filter(test_part %in% c('cs', 'sc','ss', 'cc'))
+
+final_data1 = final_data %>%
+  mutate(cho = 0,
+         cho = ifelse(response == "f", 1*risk_index, cho), 
+         cho = ifelse(response == "j", -1*risk_index, cho)) 
+
+final_data_all1 = final_data_all %>%
+  mutate(cho = 0,
+         cho = ifelse(response == "f", 1*risk_index, cho), 
+         cho = ifelse(response == "j", -1*risk_index, cho)) 
+```
+
+```{r}
+write.csv(final_data1, "final_data.csv", row.names=FALSE)
+```
+
+
+
+```{r}
+
+df_filtered <- final_data1[final_data1$test_part %in% c('cs', 'sc'), ]
+
+df_filtered$cho <- ifelse(df_filtered$test_part == "sc", -df_filtered$cho, df_filtered$cho)
+
+df_filtered <- df_filtered %>%
+  filter(skew %in% c('rl', 'lr','ns'))
+  
+result_table <- df_filtered %>%
+  group_by(subject) %>%
+  summarise(
+    Simple = sum(cho == -1),
+    Complex = sum(cho == 1),
+    Total = Simple + Complex
+  ) %>%
+  filter(Total >= 85) %>%
+  mutate(
+    choosing_simple = Simple / Total
+  )
+
+
+# View the result
+print(result_table)
+```
+
+```{r}
+
+# Load ggplot2 package
+library(ggplot2)
+
+# Create the plot
+ggplot(result_table, aes(x = subject, y = choosing_simple)) + 
+  geom_bar(stat = "identity") +  # Bar plot for choosing_simple
+   geom_text(aes(label = round(choosing_simple,2)), vjust = -0.3)+
+  geom_hline(yintercept = 0.5, color = "red", linetype = "dashed") +  # Red line at 50%
+  theme_minimal() +
+  labs(title = "Choosing Simple and Total for Each Participant", 
+       x = "Subject", 
+       y = "Proportion Choosing Simple") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis labels
+
+
+```
+
+
+```{r}
+
+
+
+# Function to perform paired t-test for each subject
+perform_ttest <- function(data) {
+  cc_data <- filter(data, test_part == "cc")$rt
+  ss_data <- filter(data, test_part == "ss")$rt
+
+  t.test(cc_data, ss_data, paired = TRUE)
+}
+
+
+results <- final_data_all1 %>% 
+  group_by(subject) %>% 
+  do(ttest_result = perform_ttest(.))
+
+
+results$Summary <- lapply(results$ttest_result, function(x) {
+  if (is.na(x$p.value)) {
+    return(x$message)
+  } else {
+    return(paste("t =", round(x$statistic, 2), 
+                 ", df =", x$parameter, 
+                 ", p-value =", round(x$p.value, 4)))
+  }
+})
+
+print(results$Summary)
+
+
+```
+
+```{r}
+df <- final_data1[final_data1$test_part %in% c('ss'), ]
+df <- df %>%
+  filter(skew %in% c('rl', 'lr','ns'))
+
+library(lme4)
+df$cho <- ifelse(df$cho == -1, 0, 1)
+model <- glmer(cho ~ evd + (evd | subject), data = df, family = binomial)
+summary(model)
+
+df$evd_cat <- cut(df$evd, 
+                  breaks = c(-Inf, -15, -5, 5, 15, Inf), 
+                  labels = c("-20", "-10", "0", "10", "20"), 
+                  right = FALSE)
+
+proportions <- df %>%
+  group_by(evd_cat) %>%
+  summarize(proportion = mean(cho == 1))
+
+ggplot(proportions, aes(x = evd_cat, y = proportion)) +
+  geom_bar(stat = "identity", fill = "grey") +
+  geom_text(aes(label = round(proportion, 2)), 
+            vjust = -0.5, # Adjust text position
+            color = "black") +
+  labs(x = "Evidence Level (evd)", y = "Proportion Choosing 1") +
+  theme_minimal()
+
+```
+```{r}
+df <- final_data1[final_data1$test_part %in% c('cc'), ]
+df <- df %>%
+  filter(skew %in% c('rl', 'lr','ns'))
+
+library(lme4)
+df$cho <- ifelse(df$cho == -1, 0, 1)
+model <- glmer(cho ~ evd + (evd | subject), data = df, family = binomial)
+summary(model)
+
+df$evd_cat <- cut(df$evd, 
+                  breaks = c(-Inf, -15, -5, 5, 15, Inf), 
+                  labels = c("-20", "-10", "0", "10", "20"), 
+                  right = FALSE)
+
+proportions <- df %>%
+  group_by(evd_cat) %>%
+  summarize(proportion = mean(cho == 1))
+
+ggplot(proportions, aes(x = evd_cat, y = proportion)) +
+  geom_bar(stat = "identity", fill = "grey") +
+  geom_text(aes(label = round(proportion, 2)), 
+            vjust = -0.5, # Adjust text position
+            color = "black") +
+  labs(x = "Evidence Level (evd)", y = "Proportion Choosing 1") +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+
+
+# Select only the rows where test_part is 'cs' or 'sc'
+df_filtered <- final_data1[final_data1$test_part %in% c('cs', 'sc'), ]
+
+
+df_filtered$cho <- ifelse(df_filtered$test_part == "sc", -df_filtered$cho, df_filtered$cho)
+
+df_filtered <-df_filtered %>%
+  filter(skew %in% c('rl', 'lr','ns'))
+
+
+df_filtered <- df_filtered %>%
+  mutate(
+    complex_index = ifelse(test_part == 'cs', 1, -1),
+    evd = evd * complex_index,
+    sdd = sdd * complex_index,
+    chose_complex = ifelse((complex_index == 1 & cho == 1) | (complex_index == -1 & cho == -1), 1, -1)
+  )
+
+
+
+
+df_filtered$evd_cat <- cut(df_filtered$evd, 
+                  breaks = c(-Inf, -15, -5, 5, 15, Inf), 
+                  labels = c("-20", "-10", "0", "10", "20"), 
+                  right = FALSE)
+proportions <- df_filtered %>%
+  group_by(evd_cat) %>%
+  summarize(proportion = mean(cho == 1))
+
+ggplot(proportions, aes(x = evd_cat, y = proportion)) +
+  geom_bar(stat = "identity", fill = "grey") +
+  geom_text(aes(label = round(proportion, 2)), 
+            vjust = -0.5, # Adjust text position
+            color = "black") +
+  labs(x = "Evidence Level (evd)", y = "Proportion Choosing 1") +
+  theme_minimal()
+
+```
+
+

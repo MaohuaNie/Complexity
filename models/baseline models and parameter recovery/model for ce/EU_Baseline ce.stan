@@ -5,10 +5,10 @@ data {
 
 	int<lower=-1,upper=1> cho[N];				// accuracy (1, -1)
 	real<lower=0> rt[N];							// rt
-  real oc[N,4];
-  real oe[N,2];
-  real pc[N,4];
-  real pe[N,2];
+  real oc[N,2];
+  real os[N,2];
+  real pc[N,2];
+  real ps[N,2];
 	real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
 }
 
@@ -35,7 +35,7 @@ transformed parameters {
 	real drift_ll[N];								// trial-by-trial drift rate for likelihood (incorporates accuracy)
 	real drift_t[N];								// trial-by-trial drift rate for predictions
 	real uc[N];	
-	real ue[N];	
+	real us[N];	
 	real<lower=0> threshold_t[N];					// trial-by-trial threshold
 	real<lower=0> ndt_t[N];							// trial-by-trial ndt
 
@@ -62,9 +62,9 @@ transformed parameters {
 	}
 
 	for (n in 1:N) {
-		uc[n] = pc[n,1] * pow(oc[n,1],alpha_sbj[participant[n]]) + pc[n,2] * pow(oc[n,2],alpha_sbj[participant[n]]) + pc[n,3] * pow(oc[n,3],alpha_sbj[participant[n]]) + pc[n,4] * pow(oc[n,4],alpha_sbj[participant[n]]);
-		ue[n] = pe[n,1] * pow(oe[n,1],alpha_sbj[participant[n]]) + pe[n,2] * pow(oe[n,2],alpha_sbj[participant[n]]);
-		drift_t[n] = theta_sbj[participant[n]] * (uc[n] - ue[n]);
+		uc[n] = pc[n,1] * pow(oc[n,1],alpha_sbj[participant[n]]) + pc[n,2] * pow(oc[n,2],alpha_sbj[participant[n]]);
+		us[n] = ps[n,1] * pow(os[n,1],alpha_sbj[participant[n]]) + ps[n,2] * pow(os[n,2],alpha_sbj[participant[n]]);
+		drift_t[n] = theta_sbj[participant[n]] * (uc[n] - us[n]);
 		drift_ll[n] = drift_t[n]*cho[n];
 		threshold_t[n] = threshold_sbj[participant[n]];
 		ndt_t[n] = ndt_sbj[participant[n]];
