@@ -3,7 +3,7 @@ output:
   html_document: default
   pdf_document: default
 ---
-```{r warning = F}
+```{r message=FALSE, warning=FALSE}
 ############### 0 - safe choice A, 1 - risky choice B #####################
 library(rstan); rstan_options(javascript=FALSE)
 library(bayesplot)
@@ -19,10 +19,6 @@ dat <- read.csv('final_data.csv')
 
 
 ```{r}
-dat = dat %>%
-  mutate(cho = 0,
-         cho = ifelse(response == "f", 1*risk_index, cho), 
-         cho = ifelse(response == "j", -1*risk_index, cho))
 
 dat <- dat %>%
   filter(skew != 'control')
@@ -32,20 +28,26 @@ dat <- dat %>%
 
 
 ```{r}
-
-
 ids <- unique(dat$subject)
 for(j in 1:length(ids)){
   dat$tid[dat$subject==ids[j]] <- j
 }
 tids <- unique(dat$tid)
+dat$rt <- as.numeric(dat$rt/1000) 
 
 dat <- dat %>%
-  filter(test_part == 'cc' | test_part == 'ss')
+  filter(test_part == 'cc' | test_part == 'ss',
+         rt >= 1,
+         subject != '4ld6kjtr',
+         subject != 'm73bj2hn')
+
 dat <- dat %>%
   mutate(con = ifelse(test_part == "cc", 1, -1))
-dat$rt <- dat$rt/1000
-dat
+
+
+
+
+
 ```
 
 
@@ -88,12 +90,12 @@ initFunc <-function (i) {
 ```
 
 
-```{r warning=F}
+```{r message=FALSE, warning=FALSE}
 m <- stan_model("MV_Baseline.stan")
 dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
-                iter=1000, 
+                iter=2000, 
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
                 warmup = 500,  # Stands for burn-in; Default = iter/2
@@ -103,7 +105,7 @@ dsamples <- sampling(m,
 ```
 
 
-```{r, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 #parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta","transf_mu_delta_theta", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta_theta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj','delta_theta_sbj', "log_lik")
 rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta","transf_mu_delta_theta", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta_theta', "lp__"), inc_warmup = TRUE, nrow = 3)
 pairs(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta","transf_mu_delta_theta", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta_theta', "lp__"))
@@ -116,7 +118,7 @@ print(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt"
 
 
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 library(ggplot2)
 library(tidyverse) # for the gather function
 

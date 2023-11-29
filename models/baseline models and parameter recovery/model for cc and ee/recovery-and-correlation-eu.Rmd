@@ -14,8 +14,8 @@ data {
   real ob[N,2];
   real pa[N,2];
   real pb[N,2];
-  
   real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
+  int<lower=-1,upper=1> con[N];
 	
 }
 parameters {
@@ -23,6 +23,7 @@ parameters {
 	real theta_v;
 	real threshold_v;
 	real ndt_v;
+	real delta_theta;
 
 
 }
@@ -44,10 +45,11 @@ transformed parameters {
 	threshold_sbj = log(1 + exp(threshold_v));
 	ndt_sbj = log(1 + exp(ndt_v));
 
+
 	for (n in 1:N) {
 		ua[n] = pa[n,1] * pow(oa[n,1], alpha_sbj) + pa[n,2] * pow(oa[n,2], alpha_sbj);
 		ub[n] = pb[n,1] * pow(ob[n,1], alpha_sbj) + pb[n,2] * pow(ob[n,2], alpha_sbj);
-		drift_t[n] = theta_sbj * (ub[n] - ua[n]);
+		drift_t[n] = (theta_sbj + delta_theta * con[n]) * (ua[n] - ub[n]);
 		drift_ll[n] = drift_t[n]*cho[n];
 		threshold_t[n] = threshold_sbj;
 		ndt_t[n] = ndt_sbj;
@@ -59,6 +61,7 @@ model {
 	theta_v ~ normal(1, 5);
 	threshold_v ~ normal(1,3);
 	ndt_v ~ normal(0,1);
+	delta_theta  ~ normal(0,3);
 
 
 	rt ~ wiener(threshold_t, ndt_t, starting_point, drift_ll);
@@ -82,35 +85,68 @@ library(rstan)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 library(RWiener)
-th_p =  4.51 
-ndt_p =   1.1 
+th_p =  4.62 
+ndt_p =   1.29
 sp_p =  .5 
-theta_p = 0.1
-alpha_p = 1
+theta_p = 7.91
+alpha_p = 0.07
+delta_theta_p = -1.46
 
 
-stim5 = read.csv('Switching-Gambles.csv')
-stim6 = read.csv('Switching-Gambles.csv')
-for(n in 1:nrow(stim6)){
-    
-    stim6$simchosum[n] = 0
+dat <- read.csv('final_data.csv')
+
+dat <- dat %>%
+  filter(test_part == 'cc' | test_part == 'ss',
+         skew %in% c("rl", "lr", 'ns'),
+         subject == '4xf5xlk2') %>%
+  select(P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, eva, evb, evd, sda, sdb, sdd, test_part)
+
+dat$con = ifelse(dat$test_part == 'cc', 1, -1)
+
+
+columns_to_modify <- c('P_A1',  'P_A2', 'P_B1', 'P_B2')
+
+
+for(column in columns_to_modify) {
+  dat[[column]] <- dat[[column]] / 100
 }
-stim7 = read.csv('Switching-Gambles.csv')
-stim8 = read.csv('Switching-Gambles.csv')
 
-for(n in 1:nrow(stim8)){
+dat$evd_cat <- cut(dat$evd, 
+                  breaks = c(-Inf, -15, -5, 5, 15, Inf), 
+                  labels = c("-20", "-10", "0", "10", "20"), 
+                  right = FALSE)
+
+dat$sdd_cat <- cut(dat$sdd, 
+                  breaks = c(-Inf, 6, 11, 16), 
+                  labels = c('5', "10", "15"), 
+                  right = FALSE)
+
+stim <- dat[order(dat$evd_cat, dat$sdd_cat, dat$con), ]
+
+
+stim2 = stim
+stim3 = stim
+
+  
+  
+for(n in 1:nrow(stim2)){
     
-    stim8$simchosum[n] = 0
-    
+    stim2$simchosum[n] = 0
 }
+
+stim4 = stim
+for(n in 1:nrow(stim4)){
+    
+    stim4$simchosum[n] = 0
+}
+
     
 
-oa = as.matrix(stim5[, c("payoffa1", "payoffa2")])
-ob = as.matrix(stim5[, c("payoffb1", "payoffb2")])
-pa = as.matrix(stim5[, c("proba1", "proba2")])
-pb = as.matrix(stim5[, c("probb1", "probb2")])
 
-
+oa = as.matrix(stim[, c("O_A1", "O_A2")])
+ob = as.matrix(stim[, c("O_B1", "O_B2")])
+pa = as.matrix(stim[, c("P_A1", "P_A2")])
+pb = as.matrix(stim[, c("P_B1", "P_B2")])
 
 
 
@@ -129,7 +165,7 @@ pb = as.matrix(stim5[, c("probb1", "probb2")])
 
 ```{r warning=FALSE}
 # Set the number of iterations
-n_iter <- 100
+n_iter <- 20
 
 
 `%+=%` = function(e1,e2) eval.parent(substitute(e1 <- e1 + e2))
@@ -139,19 +175,19 @@ th_p_recover <- numeric(n_iter)
 theta_p_recover <- numeric(n_iter)
 ndt_p_recover <- numeric(n_iter)
 alpha_p_recover <- numeric(n_iter)
-
+delta_theta_p_recover <- numeric(n_iter)
 
 th_p_bias <- numeric(n_iter)
 theta_p_bias <- numeric(n_iter)
 ndt_p_bias <- numeric(n_iter)
 alpha_p_bias <- numeric(n_iter)
-
+delta_theta_p_bias <- numeric(n_iter)
 
 th_p_dev <- numeric(n_iter)
 theta_p_dev <- numeric(n_iter)
 ndt_p_dev <- numeric(n_iter)
 alpha_p_dev <- numeric(n_iter)
-
+delta_theta_p_dev <- numeric(n_iter)
 
 
 initFunc <-function (i) {
@@ -161,7 +197,8 @@ initFunc <-function (i) {
                           alpha_sbj = runif(1,-5,5),
                           theta_v = runif(1,-4,6),
                           threshold_v = runif(1,-0.5,2.5),
-                          ndt_v = runif(1,-1.5, 0)
+                          ndt_v = runif(1,-1.5, 0),
+                          delta_theta = runif(1,-5,5)
     )
   }
   return(initList)
@@ -173,33 +210,35 @@ initFunc <-function (i) {
 for (i in 1:n_iter) {
   
   
-  for(n in 1:nrow(stim5)){
-    cres <- rwiener(1,th_p, ndt_p, sp_p, theta_p * ((pb[n,1] * (ob[n,1]^alpha_p) + pb[n,2] * (ob[n,2]^alpha_p)) - (pa[n,1] * (oa[n,1]^alpha_p) + pa[n,2] * (oa[n,2]^alpha_p))
+  for(n in 1:nrow(stim)){
+    cres <- rwiener(1,th_p, ndt_p, sp_p, (theta_p + delta_theta_p * stim$con[n])  * ((pb[n,1] * (ob[n,1]^alpha_p) + pb[n,2] * (ob[n,2]^alpha_p)) - (pa[n,1] * (oa[n,1]^alpha_p) + pa[n,2] * (oa[n,2]^alpha_p))
        
 		
 		))
-    stim5$simrt[n] <- as.numeric(cres[1]) 
-    stim5$simcho[n] <- ifelse(cres[2]=="upper",1,-1)
-    stim5$cho2[n] <- ifelse(stim5$simcho[n] == 1, 0, ifelse(stim5$simcho[n] == -1, 1, NA))
+    stim$simrt[n] <- as.numeric(cres[1]) 
+    stim$simcho[n] <- ifelse(cres[2]=="upper",1,-1)
+    stim$cho2[n] <- ifelse(stim$simcho[n] == 1, 0, ifelse(stim$simcho[n] == -1, 1, NA))
     
     }
     
     
 
-  for(n in 1:nrow(stim6)){
+  for(n in 1:nrow(stim2)){
     
-    stim6$simchosum[n]  %+=% ifelse(stim5$simcho[n]==1,1,0)
+    stim2$simchosum[n]  %+=% ifelse(stim$simcho[n]==1,1,0)
     }
   
   
   
   
-  parameters = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj')
-  dataList  = list(cho = stim5$simcho, rt = stim5$simrt, N=60, starting_point=0.5,
-                 oa = as.matrix(stim5[, c("payoffa1", "payoffa2")]),
-                 ob = as.matrix(stim5[, c("payoffb1", "payoffb2")]),
-                 pa = as.matrix(stim5[, c("proba1", "proba2")]),
-                 pb = as.matrix(stim5[, c("probb1", "probb2")])
+  parameters = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'delta_theta')
+  
+  dataList  = list(cho = stim$simcho, rt = stim$simrt, N=90, starting_point=0.5,
+                 oa = as.matrix(stim[, c("O_A1", "O_A2")]),
+                 ob = as.matrix(stim[, c("O_B1", "O_B2")]),
+                 pa = as.matrix(stim[, c("P_A1", "P_A2")]),
+                 pb = as.matrix(stim[, c("P_B1", "P_B2")]),
+                 con = stim$con
                  )
   
 
@@ -217,7 +256,7 @@ for (i in 1:n_iter) {
                 refresh = 0
                 )
   
-  samples <- extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj'))
+  samples <- extract(dsamples, pars = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'delta_theta'))
   
   
   # Store the outcome parameters for the current iteration
@@ -225,6 +264,7 @@ for (i in 1:n_iter) {
   theta_p_recover[i] <- mean(samples$theta_sbj)
   ndt_p_recover[i] <- mean(samples$ndt_sbj)
   alpha_p_recover[i] <- mean(samples$alpha_sbj)
+  delta_theta_p_recover[i] <- mean(samples$delta_theta)
 
   
   
@@ -233,6 +273,7 @@ for (i in 1:n_iter) {
   theta_p_bias[i] <- (mean(samples$theta_sbj)-theta_p)/theta_p
   ndt_p_bias[i] <- (mean(samples$ndt_sbj)-ndt_p)/ndt_p
   alpha_p_bias[i] <- (mean(samples$alpha_sbj)-alpha_p)/alpha_p
+  delta_theta_p_bias[i] <- (mean(samples$delta_theta)-delta_theta_p)/delta_theta_p
 
   
   
@@ -240,6 +281,7 @@ for (i in 1:n_iter) {
   theta_p_dev[i] <- abs(mean(samples$theta_sbj)-theta_p)/theta_p
   ndt_p_dev[i] <- abs(mean(samples$ndt_sbj)-ndt_p)/ndt_p
   alpha_p_dev[i] <- abs(mean(samples$alpha_sbj)-alpha_p)/alpha_p
+  delta_theta_p_dev[i] <- abs(mean(samples$delta_theta)-delta_theta_p)/delta_theta_p
 
   
   
@@ -247,6 +289,9 @@ for (i in 1:n_iter) {
 }
 ```
 
+```{r}
+stim
+```
 
 
 ```{r warning=FALSE}
@@ -267,7 +312,11 @@ df_summary <- data.frame(original_th_p = th_p,
                  original_alpha_p = alpha_p, 
                  recovered_alpha_p = alpha_p_recover,
                  bias_alpha_p = alpha_p_bias,
-                 deviation_alpha_p = alpha_p_dev )
+                 deviation_alpha_p = alpha_p_dev,
+                 original_delta_theta_p = delta_theta_p, 
+                 recovered_delta_theta_p = delta_theta_p_recover,
+                 bias_delta_theta_p = delta_theta_p_bias,
+                 deviation_delta_theta_p = delta_theta_p_dev)
 
 
 
@@ -276,42 +325,45 @@ df_summary <- data.frame(original_th_p = th_p,
 
 ```{r}
 #create a table to show all means and true values
-df_mean <- data.frame(parameter = c('th_p', "theta_p", "ndt_p", "alpha_p"),
-                      true_value = c(th_p, theta_p,ndt_p, alpha_p),
-                      mean_recovered = c(mean(df_summary$recovered_th_p), mean(df_summary$recovered_theta_p),mean(df_summary$recovered_ndt_p),mean(df_summary$recovered_alpha_p)),
-                      mean_bias = c(mean(df_summary$bias_th_p), mean(df_summary$bias_theta_p),mean(df_summary$bias_ndt_p),mean(df_summary$bias_alpha_p)),
-                      mean_deviation = c(mean(df_summary$deviation_th_p), mean(df_summary$deviation_theta_p),mean(df_summary$deviation_ndt_p),mean(df_summary$deviation_alpha_p))
+df_mean <- data.frame(parameter = c('th_p', "theta_p", "ndt_p", "alpha_p", 'delta_theta_p'),
+                      true_value = c(th_p, theta_p,ndt_p, alpha_p, delta_theta_p),
+                      mean_recovered = c(mean(df_summary$recovered_th_p), mean(df_summary$recovered_theta_p),mean(df_summary$recovered_ndt_p),mean(df_summary$recovered_alpha_p), mean(df_summary$recovered_delta_theta_p)),
+                      mean_bias = c(mean(df_summary$bias_th_p), mean(df_summary$bias_theta_p),mean(df_summary$bias_ndt_p),mean(df_summary$bias_alpha_p), mean(df_summary$bias_delta_theta_p)),
+                      mean_deviation = c(mean(df_summary$deviation_th_p), mean(df_summary$deviation_theta_p),mean(df_summary$deviation_ndt_p),mean(df_summary$deviation_alpha_p), mean(df_summary$deviation_delta_theta_p))
                  )
 df_mean
 ```
 ```{r}
-df_median <- data.frame(parameter = c('th_p', "theta_p", "ndt_p", "alpha_p"),
-                      true_value = c(th_p, theta_p,ndt_p, alpha_p),
-                      median_recovered = c(median(df_summary$recovered_th_p), median(df_summary$recovered_theta_p),median(df_summary$recovered_ndt_p),median(df_summary$recovered_alpha_p))
+df_median <- data.frame(parameter = c('th_p', "theta_p", "ndt_p", "alpha_p", 'delta_theta_p'),
+                      true_value = c(th_p, theta_p,ndt_p, alpha_p, delta_theta_p),
+                      median_recovered = c(median(df_summary$recovered_th_p), median(df_summary$recovered_theta_p),median(df_summary$recovered_ndt_p),median(df_summary$recovered_alpha_p), median(df_summary$recovered_delta_theta_p))
                       )
 
 df_median
 
-hist(df_summary$recovered_th_p)
-hist(df_summary$recovered_theta_p)
-hist(df_summary$recovered_ndt_p)
-hist(df_summary$recovered_alpha_p)
 ```
 ```{r}
 #check whether the risky choice proportion can be successfully recovered by the mean-variance model
 #firstly, use recovered parameter values to simulation choice data 
+
+oa = as.matrix(stim[, c("O_A1", "O_A2")])
+ob = as.matrix(stim[, c("O_B1", "O_B2")])
+pa = as.matrix(stim[, c("P_A1", "P_A2")])
+pb = as.matrix(stim[, c("P_B1", "P_B2")])
+
+
 for (i in 1:n_iter) {
 
-  for(n in 1:nrow(stim7)){
-      cres <- rwiener(1,mean(df_summary$recovered_th_p), mean(df_summary$recovered_ndt_p), sp_p, mean(df_summary$recovered_theta_p) * ((pb[n,1] * (ob[n,1]^mean(df_summary$recovered_alpha_p)) + pb[n,2] * (ob[n,2]^mean(df_summary$recovered_alpha_p))) - (pa[n,1] * (oa[n,1]^mean(df_summary$recovered_alpha_p)) + pa[n,2] * (oa[n,2]^mean(df_summary$recovered_alpha_p)))))
-      stim7$simrt[n] <- as.numeric(cres[1]) 
-      stim7$simcho[n] <- ifelse(cres[2]=="upper",1,-1)
-      stim7$cho2[n] <- ifelse(stim7$simcho[n] == 1, 0, ifelse(stim7$simcho[n] == -1, 1, NA))
+  for(n in 1:nrow(stim3)){
+      cres <- rwiener(1,mean(df_summary$recovered_th_p), mean(df_summary$recovered_ndt_p), sp_p, (mean(df_summary$recovered_theta_p) + mean(df_summary$recovered_delta_theta_p) * con[n]) * ((pb[n,1] * (ob[n,1]^mean(df_summary$recovered_alpha_p)) + pb[n,2] * (ob[n,2]^mean(df_summary$recovered_alpha_p))) - (pa[n,1] * (oa[n,1]^mean(df_summary$recovered_alpha_p)) + pa[n,2] * (oa[n,2]^mean(df_summary$recovered_alpha_p)))))
+      stim3$simrt[n] <- as.numeric(cres[1]) 
+      stim3$simcho[n] <- ifelse(cres[2]=="upper",1,-1)
+      stim3$cho2[n] <- ifelse(stim3$simcho[n] == 1, 0, ifelse(stim3$simcho[n] == -1, 1, NA))
     
   }
-  for(n in 1:nrow(stim8)){
+  for(n in 1:nrow(stim4)){
     
-    stim8$simchosum[n]  %+=% ifelse(stim7$simcho[n]==1,1,0)
+    stim4$simchosum[n]  %+=% ifelse(stim3$simcho[n]==1,1,0)
     
     }
 }
@@ -322,16 +374,18 @@ for (i in 1:n_iter) {
 
 ```{r}
 #create summary dataframe
-label <- c(rep("basic", 60), rep("recovered", 60))
-df <- data.frame(trial = rep(stim6$num),
-                 value = c(stim6$simchosum/n_iter, stim8$simchosum/n_iter),
+#create summary dataframe
+label <- c(rep("basic", 90), rep("recovered", 90))
+df <- data.frame(trial = rep(1:90, 2),
+                 value = c(stim2$simchosum/n_iter, stim4$simchosum/n_iter),
                  type = rep(label))
 #display the first n trials
-subset_data <- df[df$trial <= 60, ]
+subset_data <- df[df$trial <= 90, ]
 
 ```
 
 ```{r}
+library(ggplot2)
 ggplot(subset_data, aes(x = factor(trial), y = value, fill = type, colour = type)) + 
   geom_bar(stat = "identity", position = "dodge")+
   ylim(0,1)

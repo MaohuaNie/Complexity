@@ -5,8 +5,9 @@ output:
 ---
 
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 library(rstan)
+library(dplyr)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
@@ -15,38 +16,48 @@ library(RWiener)
 
 
 #original parameter values
-th =  4.52 
-ndt =   1.09 
+th =  4.56 
+ndt =   1.32 
 beta =  .5 
-theta = .04 
-alpha = -0.59
+theta = .01
+alpha = -0.36
+delta_theta = 0.002
+
+dat <- read.csv('final_data.csv')
+
+dat <- dat %>%
+  filter(test_part == 'cc' | test_part == 'ss',
+         skew %in% c("rl", "lr", 'ns'),
+         subject == '4xf5xlk2') %>%
+  select(P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, eva, evb, evd, sda, sdb, sdd, test_part)
+
+dat$con = ifelse(dat$test_part == 'cc', 1, -1)
 
 
-stim = read.csv('Switching-Gambles.csv')
+columns_to_modify <- c('P_A1',  'P_A2', 'P_B1', 'P_B2')
 
-# gamble characteristics
-  stim$eva = stim$payoffa1*stim$proba1+stim$payoffa2*stim$proba2
 
-  stim$evb = stim$payoffb1*stim$probb1+stim$payoffb2*stim$probb2
-  stim$evd = stim$evb-stim$eva
-  stim$sda = sqrt((stim$payoffa1-stim$eva)^2*stim$proba1 + (stim$payoffa2-stim$eva)^2*stim$proba2)
-  stim$sdb = sqrt((stim$payoffb1-stim$evb)^2*stim$probb1 + (stim$payoffb2-stim$evb)^2*stim$probb2)
-  stim$sdd = stim$sdb - stim$sda 
-  
-  
-  
+for(column in columns_to_modify) {
+  dat[[column]] <- dat[[column]] / 100
+}
 
-stim2 = read.csv('Switching-Gambles.csv')
-stim3 = read.csv('Switching-Gambles.csv')
+dat$evd_cat <- cut(dat$evd, 
+                  breaks = c(-Inf, -15, -5, 5, 15, Inf), 
+                  labels = c("-20", "-10", "0", "10", "20"), 
+                  right = FALSE)
 
-# gamble characteristics
-  stim3$eva = stim$payoffa1*stim$proba1+stim$payoffa2*stim$proba2
+dat$sdd_cat <- cut(dat$sdd, 
+                  breaks = c(-Inf, 6, 11, 16), 
+                  labels = c('5', "10", "15"), 
+                  right = FALSE)
 
-  stim3$evb = stim$payoffb1*stim$probb1+stim$payoffb2*stim$probb2
-  stim3$evd = stim$evb-stim$eva
-  stim3$sda = sqrt((stim$payoffa1-stim$eva)^2*stim$proba1 + (stim$payoffa2-stim$eva)^2*stim$proba2)
-  stim3$sdb = sqrt((stim$payoffb1-stim$evb)^2*stim$probb1 + (stim$payoffb2-stim$evb)^2*stim$probb2)
-  stim3$sdd = stim$sdb - stim$sda 
+stim <- dat[order(dat$evd_cat, dat$sdd_cat, dat$con), ]
+
+stim$drift <- (theta + delta_theta * stim$con) * (stim$evd + alpha * stim$sdd)
+
+stim2 = stim
+stim3 = stim
+
   
   
 for(n in 1:nrow(stim2)){
@@ -54,13 +65,18 @@ for(n in 1:nrow(stim2)){
     stim2$simchosum[n] = 0
 }
 
-stim4 = read.csv('Switching-Gambles.csv')
+stim4 = stim
 for(n in 1:nrow(stim4)){
     
     stim4$simchosum[n] = 0
 }
 
 ```
+
+
+
+
+
 
 
 
@@ -80,6 +96,7 @@ data {
 	real evd[N];
 	real sdd[N];
 	real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
+	int<lower=-1,upper=1> con[N];
 }
 
 parameters {
@@ -88,6 +105,7 @@ parameters {
 	real theta_v;
 	real threshold_v;
 	real ndt_v;
+	real delta_theta;
 }
 transformed parameters {
 	real drift_ll[N];								// trial-by-trial drift rate for likelihood (incorporates accuracy)
@@ -107,7 +125,7 @@ transformed parameters {
 	ndt_sbj = log(1 + exp(ndt_v));
 
 	for (n in 1:N) {
-		drift_t[n] = theta_sbj * (evd[n] + alpha_sbj * sdd[n]);
+		drift_t[n] = (theta_sbj + delta_theta*con[n])* (evd[n] + alpha_sbj * sdd[n]);
 		drift_ll[n] = drift_t[n]*cho[n];
 		threshold_t[n] = threshold_sbj;
 		ndt_t[n] = ndt_sbj;
@@ -118,6 +136,7 @@ model {
 	theta_v ~ normal(1,5);
 	threshold_v ~ normal(1,3);
 	ndt_v ~ normal(0,1);
+	delta_theta ~ normal(0, 5);
 
 
 	rt ~ wiener(threshold_t, ndt_t, starting_point, drift_ll);
@@ -143,7 +162,8 @@ initFunc <-function (i) {
                           alpha_sbj = runif(1,-5,5),
                           theta_v = runif(1,-20,1),
                           threshold_v = runif(1,-0.5,5),
-                          ndt_v = runif(1,-1.5, 0)
+                          ndt_v = runif(1,-1.5, 0),
+                          delta_theta = runif(1,-2,2)
     )
   }
   return(initList)
@@ -152,7 +172,7 @@ initFunc <-function (i) {
 
 ```{r warning=FALSE}
 # Set the number of iterations
-n_iter <- 100
+n_iter <- 20
 
 
 `%+=%` = function(e1,e2) eval.parent(substitute(e1 <- e1 + e2))
@@ -164,23 +184,29 @@ th_recover <- numeric(n_iter)
 theta_recover <- numeric(n_iter)
 ndt_recover <- numeric(n_iter)
 alpha_recover <- numeric(n_iter)
+delta_theta_recover <- numeric(n_iter)
+
 
 th_bias <- numeric(n_iter)
 theta_bias <- numeric(n_iter)
 ndt_bias <- numeric(n_iter)
 alpha_bias <- numeric(n_iter)
+delta_theta_bias <- numeric(n_iter)
+
 
 th_dev <- numeric(n_iter)
 theta_dev <- numeric(n_iter)
 ndt_dev <- numeric(n_iter)
 alpha_dev <- numeric(n_iter)
+delta_theta_dev <- numeric(n_iter)
+
 
 # Run the model for n_iter iterations
 for (i in 1:n_iter) {
   
   
   for(n in 1:nrow(stim)){
-    cres <- rwiener(1,th, ndt, beta, theta * (stim$evd[n] + alpha * stim$sdd[n]))
+    cres <- rwiener(1,th, ndt, beta, (theta + delta_theta * stim$con[n]) * (stim$evd[n] + alpha * stim$sdd[n]))
     stim$simrt[n] <- as.numeric(cres[1]) 
     stim$simcho[n] <- ifelse(cres[2]=="upper",1,-1)
   }
@@ -195,8 +221,8 @@ for (i in 1:n_iter) {
   
   
   
-  parameters = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj')
-  dataList  = list(cho = stim$simcho,rt = stim$simrt, N=60,  L = 1, starting_point=0.5, evd = stim$evd, sdd = stim$sdd)
+  parameters = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'delta_theta')
+  dataList  = list(cho = stim$simcho,rt = stim$simrt, N=90,  L = 1, starting_point=0.5, evd = stim$evd, sdd = stim$sdd, con = stim$con)
   
 
 
@@ -213,7 +239,7 @@ for (i in 1:n_iter) {
                 refresh = 0
                 )
   
-  samples <- rstan::extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj'))
+  samples <- rstan::extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj', 'delta_theta'))
   
   
   # Store the outcome parameters for the current iteration
@@ -221,19 +247,21 @@ for (i in 1:n_iter) {
   theta_recover[i] <- mean(samples$theta_sbj)
   ndt_recover[i] <- mean(samples$ndt_sbj)
   alpha_recover[i] <- mean(samples$alpha_sbj)
-  
+  delta_theta_recover[i] <- mean(samples$delta_theta)
   
   
   th_bias[i] <- (mean(samples$threshold_sbj)-th)/th
   theta_bias[i] <- (mean(samples$theta_sbj)-theta)/theta
   ndt_bias[i] <- (mean(samples$ndt_sbj)-ndt)/ndt
   alpha_bias[i] <- (mean(samples$alpha_sbj)-alpha)/alpha
+  delta_theta_bias[i] <- (mean(samples$delta_theta)-delta_theta)/delta_theta
   
   
   th_dev[i] <- abs(mean(samples$threshold_sbj)-th)/th
   theta_dev[i] <- abs(mean(samples$theta_sbj)-theta)/theta
   ndt_dev[i] <- abs(mean(samples$ndt_sbj)-ndt)/ndt
   alpha_dev[i] <- abs(mean(samples$alpha_sbj)-alpha)/alpha
+  delta_theta_dev[i] <- abs(mean(samples$delta_theta)-delta_theta)/delta_theta
 
   
   
@@ -263,7 +291,11 @@ df_summary <- data.frame(original_th = th,
                  original_alpha = alpha, 
                  recovered_alpha = alpha_recover,
                  bias_alpha = alpha_bias,
-                 deviation_alpha = alpha_dev
+                 deviation_alpha = alpha_dev,
+                 original_delta_theta = delta_theta, 
+                 recovered_delta_theta = delta_theta_recover,
+                 bias_delta_theta = delta_theta_bias,
+                 deviation_delta_theta = delta_theta_dev
                  )
 
 
@@ -273,19 +305,19 @@ df_summary <- data.frame(original_th = th,
 
 ```{r}
 #create a table to show all means and true values
-df_mean <- data.frame(parameter = c('th', "theta", "ndt", "alpha"),
-                      true_value = c(th, theta,ndt, alpha),
-                      mean_recovered = c(mean(df_summary$recovered_th), mean(df_summary$recovered_theta),mean(df_summary$recovered_ndt),mean(df_summary$recovered_alpha)),
-                      mean_bias = c(mean(df_summary$bias_th), mean(df_summary$bias_theta),mean(df_summary$bias_ndt),mean(df_summary$bias_alpha)),
-                      mean_deviation = c(mean(df_summary$deviation_th), mean(df_summary$deviation_theta),mean(df_summary$deviation_ndt),mean(df_summary$deviation_alpha))
+df_mean <- data.frame(parameter = c('th', "theta", "ndt", "alpha", 'delta_theta'),
+                      true_value = c(th, theta,ndt, alpha, delta_theta),
+                      mean_recovered = c(mean(df_summary$recovered_th), mean(df_summary$recovered_theta),mean(df_summary$recovered_ndt),mean(df_summary$recovered_alpha), mean(df_summary$recovered_delta_theta)),
+                      mean_bias = c(mean(df_summary$bias_th), mean(df_summary$bias_theta),mean(df_summary$bias_ndt),mean(df_summary$bias_alpha), mean(df_summary$bias_delta_theta)),
+                      mean_deviation = c(mean(df_summary$deviation_th), mean(df_summary$deviation_theta),mean(df_summary$deviation_ndt),mean(df_summary$deviation_alpha), mean(df_summary$deviation_delta_theta))
                  )
 df_mean
 ```
 
 ```{r}
-df_median <- data.frame(parameter = c('th', "theta", "ndt", "alpha"),
-                      true_value = c(th, theta,ndt, alpha),
-                      median_recovered = c(median(df_summary$recovered_th), median(df_summary$recovered_theta),median(df_summary$recovered_ndt),median(df_summary$recovered_alpha))
+df_median <- data.frame(parameter = c('th', "theta", "ndt", "alpha", 'delta_theta'),
+                      true_value = c(th, theta,ndt, alpha, delta_theta),
+                      median_recovered = c(median(df_summary$recovered_th), median(df_summary$recovered_theta),median(df_summary$recovered_ndt),median(df_summary$recovered_alpha), median(df_summary$recovered_delta_theta))
                       )
 
 df_median
@@ -300,7 +332,7 @@ df_median
 for (i in 1:n_iter) {
 
   for(n in 1:nrow(stim3)){
-      cres <- rwiener(1,mean(df_summary$recovered_th), mean(df_summary$recovered_ndt), beta, mean(df_summary$recovered_theta) * (stim3$evd[n] + mean(df_summary$recovered_alpha) * stim3$sdd[n]))
+      cres <- rwiener(1,mean(df_summary$recovered_th), mean(df_summary$recovered_ndt), beta, (mean(df_summary$recovered_theta) + mean(df_summary$recovered_delta_theta)* stim3$con[n] ) * (stim3$evd[n] + mean(df_summary$recovered_alpha) * stim3$sdd[n]))
       stim3$simrt[n] <- as.numeric(cres[1]) 
       stim3$simcho[n] <- ifelse(cres[2]=="upper",1,-1)
     
@@ -316,12 +348,12 @@ for (i in 1:n_iter) {
 
 ```{r}
 #create summary dataframe
-label <- c(rep("basic", 60), rep("recovered", 60))
-df <- data.frame(trial = rep(stim2$num),
+label <- c(rep("basic", 90), rep("recovered", 90))
+df <- data.frame(trial = rep(1:90, 2),
                  value = c(stim2$simchosum/n_iter, stim4$simchosum/n_iter),
                  type = rep(label))
 #display the first n trials
-subset_data <- df[df$trial <= 60, ]
+subset_data <- df[df$trial <= 90, ]
 
 ```
 
@@ -337,43 +369,57 @@ ggplot(subset_data, aes(x = factor(trial), y = value, fill = type, colour = type
 
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 library(rstan)
 library(RWiener)
-th =  4.52 
-ndt =   1.09 
-beta =  .5 
-theta = .04 
+
 
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
-stim = read.csv('Switching-Gambles.csv')
+#original parameter values
+th =  4.56 
+ndt =   1.32 
+beta =  .5 
+#theta = .01
+alpha = -0.36
+delta_theta = 0.002
+
+dat <- read.csv('final_data.csv')
+
+dat <- dat %>%
+  filter(test_part == 'cc' | test_part == 'ss',
+         skew %in% c("rl", "lr", 'ns'),
+         subject == '4xf5xlk2') %>%
+  select(P_A1, O_A1, P_A2, O_A2, P_B1, O_B1, P_B2, O_B2, eva, evb, evd, sda, sdb, sdd, test_part)
+
+dat$con = ifelse(dat$test_part == 'cc', 1, -1)
 
 
-# gamble characteristics
-  stim$eva = stim$payoffa1*stim$proba1+stim$payoffa2*stim$proba2
+columns_to_modify <- c('P_A1',  'P_A2', 'P_B1', 'P_B2')
 
-  stim$evb = stim$payoffb1*stim$probb1+stim$payoffb2*stim$probb2
-  stim$evd = stim$evb-stim$eva
-  stim$sda = sqrt((stim$payoffa1-stim$eva)^2*stim$proba1 + (stim$payoffa2-stim$eva)^2*stim$proba2)
-  stim$sdb = sqrt((stim$payoffb1-stim$evb)^2*stim$probb1 + (stim$payoffb2-stim$evb)^2*stim$probb2)
-  stim$sdd = stim$sdb - stim$sda 
-  
-  
-  
 
-stim2 = read.csv('Switching-Gambles.csv')
-stim3 = read.csv('Switching-Gambles.csv')
+for(column in columns_to_modify) {
+  dat[[column]] <- dat[[column]] / 100
+}
 
-# gamble characteristics
-  stim3$eva = stim$payoffa1*stim$proba1+stim$payoffa2*stim$proba2
+dat$evd_cat <- cut(dat$evd, 
+                  breaks = c(-Inf, -15, -5, 5, 15, Inf), 
+                  labels = c("-20", "-10", "0", "10", "20"), 
+                  right = FALSE)
 
-  stim3$evb = stim$payoffb1*stim$probb1+stim$payoffb2*stim$probb2
-  stim3$evd = stim$evb-stim$eva
-  stim3$sda = sqrt((stim$payoffa1-stim$eva)^2*stim$proba1 + (stim$payoffa2-stim$eva)^2*stim$proba2)
-  stim3$sdb = sqrt((stim$payoffb1-stim$evb)^2*stim$probb1 + (stim$payoffb2-stim$evb)^2*stim$probb2)
-  stim3$sdd = stim$sdb - stim$sda 
+dat$sdd_cat <- cut(dat$sdd, 
+                  breaks = c(-Inf, 6, 11, 16), 
+                  labels = c('5', "10", "15"), 
+                  right = FALSE)
+
+stim <- dat[order(dat$evd_cat, dat$sdd_cat, dat$con), ]
+
+stim$drift <- (theta + delta_theta * stim$con) * (stim$evd + alpha * stim$sdd)
+
+stim2 = stim
+stim3 = stim
+
   
   
 for(n in 1:nrow(stim2)){
@@ -381,11 +427,12 @@ for(n in 1:nrow(stim2)){
     stim2$simchosum[n] = 0
 }
 
-stim4 = read.csv('Switching-Gambles.csv')
+stim4 = stim
 for(n in 1:nrow(stim4)){
     
     stim4$simchosum[n] = 0
 }
+
 
 ```
 
@@ -400,9 +447,9 @@ for(n in 1:nrow(stim4)){
 
 
 
-```{r warning=FALSE}
+```{r eval=FALSE, warning=FALSE, include=FALSE}
 # Set the number of iterations
-n_iter <- 100
+n_iter <- 30
 
 
 `%+=%` = function(e1,e2) eval.parent(substitute(e1 <- e1 + e2))
@@ -427,31 +474,29 @@ alpha_dev <- numeric(n_iter)
 
 # Storage for results
 results_df <- data.frame(
-  True_alpha = numeric(n_iter),
-  Estimated_alpha = numeric(n_iter),
-  CI_alpha_Lower = numeric(n_iter),
-  CI_alpha_Upper = numeric(n_iter)
+  True_theta = numeric(n_iter),
+  Estimated_theta = numeric(n_iter),
+  CI_theta_Lower = numeric(n_iter),
+  CI_theta_Upper = numeric(n_iter)
 )
 
-alpha_set <- numeric(n_iter)
+theta_set <- numeric(n_iter)
 # Run the model for n_iter iterations
 for (i in 1:n_iter) {
   
-  # Set the range (minimum and maximum values)
-  min_value <- -2
-  max_value <- 2
   
   
    # Generate a single random non-zero value within the range
-  alpha <- 0
-  while (alpha == 0) {
-    alpha <- sample(c(seq(min_value, -0.0001, length.out = 100), seq(0.0001, max_value, length.out = 100)), 1)
+  theta <- 0
+  while (theta == 0) {
+    theta <- runif(1, 0.005, 0.015)
+
   }
-  alpha_set[i] = alpha
+  theta_set[i] = theta
   
   
   for(n in 1:nrow(stim)){
-    cres <- rwiener(1,th, ndt, beta, theta * (stim$evd[n] + alpha * stim$sdd[n]))
+    cres <- rwiener(1,th, ndt, beta, (theta + delta_theta * stim$con[n]) * (stim$evd[n] + alpha * stim$sdd[n]))
     stim$simrt[n] <- as.numeric(cres[1]) 
     stim$simcho[n] <- ifelse(cres[2]=="upper",1,-1)
   }
@@ -466,8 +511,8 @@ for (i in 1:n_iter) {
   
   
   
-  parameters = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj')
-  dataList  = list(cho = stim$simcho,rt = stim$simrt, N=60,  L = 1, starting_point=0.5, evd = stim$evd, sdd = stim$sdd)
+  parameters = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'delta_theta')
+  dataList  = list(cho = stim$simcho,rt = stim$simrt, N=90,  L = 1, starting_point=0.5, evd = stim$evd, sdd = stim$sdd, con = stim$con)
   
 
 
@@ -484,10 +529,10 @@ for (i in 1:n_iter) {
                 refresh = 0
                 )
   
-  samples <- rstan::extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj'))
+  samples <- rstan::extract(dsamples, pars = c('alpha_sbj', 'theta_sbj', 'threshold_sbj', 'ndt_sbj', 'delta_theta'))
   extracted_params <- rstan::extract(dsamples)
-  Estimated_alpha = mean(extracted_params$alpha_sbj)
-  CI_alpha = quantile(extracted_params$alpha_sbj, probs = c(0.025, 0.975))
+  Estimated_theta = mean(extracted_params$theta_sbj)
+  CI_theta = quantile(extracted_params$theta_sbj, probs = c(0.025, 0.975))
   
   # Store the outcome parameters for the current iteration
   th_recover[i] <- mean(samples$threshold_sbj)
@@ -510,10 +555,10 @@ for (i in 1:n_iter) {
 
     # Store the results in the data frame
   results_df[i, ] <- c(
-    alpha,
-    Estimated_alpha,
-    CI_alpha[1],
-    CI_alpha[2]
+    theta,
+    Estimated_theta,
+    CI_theta[1],
+    CI_theta[2]
   )
   
   
@@ -523,30 +568,29 @@ for (i in 1:n_iter) {
 
 
 
-```{r warning=FALSE}
+```{r eval=FALSE, include=FALSE}
 library(ggplot2)
 # Create scatterplots for True vs. Estimated Intercepts with color-coded error bars
-plot_alpha <- ggplot(results_df, aes(x = True_alpha, y = Estimated_alpha)) +
+
+
+ggplot(results_df, aes(x = True_theta, y = Estimated_theta)) +
   geom_point(shape = 16, size = 2, color = "black", fill = "white") +
   geom_abline(intercept = 0, slope = 1, color = "blue") +
   geom_errorbar(
-    aes(ymin = results_df$CI_alpha_Lower, ymax = results_df$CI_alpha_Upper),
+    aes(ymin = results_df$CI_theta_Lower, ymax = results_df$CI_theta_Upper),
     width = 0.03,
-     color = ifelse(results_df$CI_alpha_Lower > results_df$True_alpha | results_df$CI_alpha_Upper < results_df$True_alpha, "red", "blue"),
+     color = ifelse(results_df$CI_theta_Lower > results_df$True_theta | results_df$CI_theta_Upper < results_df$True_theta, "red", "blue"),
     linetype = "solid",
     linewidth = 0.4,
     alpha = 0.5
   ) +
   labs(
-    title = "Parameter Recovery: alpha",
+    title = "Parameter Recovery: theta",
     x = "True alpha",
     y = "Estimated alpha"
-  ) +
-  ylim = c(-2,2)+
+  ) + ylim(-0.02, 0.02) +
   theme_minimal()  # Change to a minimal theme
 
-# Print the plot
-print(plot_alpha)
 
 ```
 

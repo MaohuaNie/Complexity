@@ -8,34 +8,37 @@ library(rstan); rstan_options(javascript=FALSE)
 library(dplyr)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = T)
+```
 
 
-
+```{r}
 dat <- read.csv('final_data.csv')
-dat = dat %>%
-  mutate(cho = 0,
-         cho = ifelse(response == "f", 1*risk_index, cho), 
-         cho = ifelse(response == "j", -1*risk_index, cho))
-
 dat <- dat %>%
   filter(skew != 'control')
+```
 
 
+
+
+```{r}
 ids <- unique(dat$subject)
 for(j in 1:length(ids)){
   dat$tid[dat$subject==ids[j]] <- j
 }
 tids <- unique(dat$tid)
+dat$rt <- as.numeric(dat$rt/1000) 
 
 dat <- dat %>%
-  filter(test_part == 'cc' | test_part == 'ss')
+  filter(test_part == 'cc' | test_part == 'ss',
+         rt >= 1,
+         subject != '4ld6kjtr',
+         subject != 'm73bj2hn')
 
 dat <- dat %>%
   mutate(con = ifelse(test_part == "cc", 1, -1))
-dat$rt <- dat$rt/1000
+```
 
-
-# Assuming your dataframe is named 'df'
+```{r message=FALSE, warning=FALSE}
 dat$P_A1 <- dat$P_A1 / 100
 dat$P_A2 <- dat$P_A2 / 100
 dat$P_B1 <- dat$P_B1 / 100
@@ -92,7 +95,7 @@ initFunc <-function (i) {
 }
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 m <- stan_model("EU_Baseline.stan")
 dsamples <- sampling(m,  
                 data=dataList, 
@@ -107,7 +110,7 @@ dsamples <- sampling(m,
 
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #"transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta","transf_mu_delta_theta", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta_theta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj','delta_theta_sbj', "log_lik"
 
 rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta","transf_mu_delta_theta", 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta_theta', "lp__"), inc_warmup = TRUE, nrow = 3)
