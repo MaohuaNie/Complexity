@@ -1,0 +1,251 @@
+```{r}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+```{r message=FALSE, warning=FALSE}
+
+library(rstan); rstan_options(javascript=FALSE)
+library(bayesplot)
+library(dplyr)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = T)
+
+dat <- read.csv('final_data.csv')
+```
+
+
+```{r}
+
+dat <- dat %>%
+  filter(skew != 'control')
+dat <- dat %>% 
+  mutate(cho = ifelse(true_response == 'f', 1, -1))
+
+
+dat$P_A1 <- dat$P_A1 / 100
+dat$P_A2 <- dat$P_A2 / 100
+dat$P_B1 <- dat$P_B1 / 100
+dat$P_B2 <- dat$P_B2 / 100
+```
+
+
+
+
+```{r}
+ids <- unique(dat$Prolific_ID)
+for(j in 1:length(ids)){
+  dat$tid[dat$Prolific_ID==ids[j]] <- j
+}
+tids <- unique(dat$tid)
+
+dat$rt <- as.numeric(dat$rt/1000) 
+
+dat <- dat %>%
+  filter(test_part == 'cc' | test_part == 'ss')
+
+dat <- dat %>%
+  mutate(con = ifelse(test_part == 'cc', 1 , -1)  )
+
+```
+
+
+  
+
+```{r}
+dat <- dat %>% 
+  mutate(index1 = as.numeric(ifelse(O_A1>O_A2, 1, -1)) ,
+         index2 = as.numeric(ifelse(O_B1>O_B2, 1, -1)),)
+
+dat <- dat %>%
+  # Swap values if oa_condition is not 0
+  rowwise() %>%
+  mutate(
+    oa3 = if_else(index1 == 1, O_A1, O_A2),
+    oa4 = if_else(index1 == 1, O_A2, O_A1),
+    pa3 = if_else(index1 == 1, P_A1, P_A2),
+    pa4 = if_else(index1 == 1, P_A2, P_A1),
+    ob3 = if_else(index2 == 1, O_B1, O_B2),
+    ob4 = if_else(index2 == 1, O_B2, O_B1),
+    pb3 = if_else(index2 == 1, P_B1, P_B2),
+    pb4 = if_else(index2 == 1, P_B2, P_B1),
+  ) %>%
+  ungroup()
+
+```
+
+
+```{r}
+oa = as.matrix(dat[, c("oa3", "oa4")])
+ob = as.matrix(dat[, c("ob3", "ob4")])
+pa = as.matrix(dat[, c("pa3", "pa4")])
+pb = as.matrix(dat[, c("pb3", "pb4")])
+
+```
+
+```{r}
+dataList  = list(cho = dat$cho,rt = dat$rt, participant = dat$tid,N=nrow(dat),  L = length(tids),starting_point=0.5, 
+                 oa = as.matrix(dat[, c("oa3", "oa4")]),
+                 ob = as.matrix(dat[, c("ob3", "ob4")]),
+                 pa = as.matrix(dat[, c("pa3", "pa4")]),
+                 pb = as.matrix(dat[, c("pb3", "pb4")]),
+                 con = dat$con
+                 )
+
+
+
+parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'transf_mu_gamma', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_gamma','sd_delta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'gamma_sbj', 'delta_sbj', "log_lik")
+
+```
+
+
+
+```{r}
+initFunc <-function (i) {
+  initList=list()
+  for (ll in 1:i){
+    initList[[ll]] = list(
+                          mu_alpha = runif(1,-1.4587,2.5413), 
+                          sd_alpha = runif(1,0,1),
+                          mu_threshold = runif(1,-0.5, 2.5), 
+                          sd_threshold = runif(1,0,1),
+                          mu_ndt = runif(1, -1.5, 0),
+                          sd_ndt = runif(1, 0, 1),
+                          mu_theta = runif(1,0, 6), 
+                          sd_theta = runif(1,0,1),
+                          mu_gamma = runif(1,-1, 1), 
+                          sd_gamma = runif(1, 0, 1),
+                          mu_delta = runif(1,-1, 1), 
+                          sd_delta = runif(1, 0, 1),
+                          z_alpha = runif(length(tids),-0.1,0.1),
+                          z_theta = runif(length(tids),-0.1,0.1),
+                          z_threshold = runif(length(tids),-0.1,0.1),
+                          z_ndt = runif(length(tids),-0.1,0.1),
+                          z_gamma = runif(length(tids),-0.1,0.1),
+                          z_delta = runif(length(tids),-0.1,0.1)
+    )
+  }
+  
+  return(initList)
+}
+```
+
+
+```{r}
+m <- stan_model("EU_prob cc.stan")
+dsamples <- sampling(m,  
+                data=dataList, 
+                pars=parameters,
+                iter=1000, 
+                chains=4,#If not specified, gives random inits
+                init = initFunc(4),
+                warmup = 500,  # Stands for burn-in; Default = iter/2
+                seed = 12
+
+                )
+
+```
+
+```{r}
+#"transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'transf_mu_gamma', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_gamma','sd_delta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'gamma_sbj', 'delta_sbj',
+rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'transf_mu_gamma', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_gamma','sd_delta', "lp__"), inc_warmup = TRUE, nrow = 3)
+
+pairs(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'transf_mu_gamma', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_gamma','sd_delta', "lp__"))
+print(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'transf_mu_gamma', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_gamma','sd_delta', "lp__"))
+```
+
+
+
+
+```{r}
+library(ggplot2)
+library(tidyverse) # for the gather function
+
+samples_matrix <- as.matrix(dsamples)
+means <- colMeans(samples_matrix)
+hpd_interval <- t(apply(samples_matrix, 2, function(x) quantile(x, probs=c(0.025, 0.975))))
+
+
+
+parameters <- c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'transf_mu_gamma')
+
+# Reshape data to a long format
+df_long <- as.data.frame(samples_matrix) %>%
+  gather(key = "parameter", value = "value", parameters)
+
+# Convert hpd_interval to a data frame and name the columns
+hpd_interval_sub <- hpd_interval[parameters, ]
+hpd_df <- as.data.frame(hpd_interval_sub)
+colnames(hpd_df) <- c("lower", "upper")
+rownames(hpd_df) <- parameters
+hpd_df$parameter <- rownames(hpd_df)
+
+
+
+# Aesthetic enhancements
+theme_set(theme_minimal(base_size = 14)) # Set the default theme
+
+custom_palette <- c("density_fill" = "lightgray", 
+                    "mean_line" = "blue", 
+                    "hpd_line" = "darkgreen")
+
+# Add text labels for mean, lower, and upper HPD values
+df_long <- df_long %>%
+  group_by(parameter) %>%
+  mutate(mean = means[parameter])
+
+hpd_df <- hpd_df %>%
+  mutate(mid = (lower + upper) / 2)
+
+p <- ggplot(df_long, aes(x = value)) + 
+  geom_density(aes(fill = "density_fill")) + 
+  scale_fill_manual(values = custom_palette, guide = FALSE) +
+  geom_vline(aes(xintercept = mean, color = "mean_line"), linetype = "dashed", size = 1, alpha = 0.7) +
+  geom_text(data = df_long, aes(x = mean, y = 0, label = round(mean, 2)), vjust = -0.5, hjust = 0.5, size = 4, color = custom_palette["mean_line"]) +
+  geom_vline(data = hpd_df, aes(xintercept = lower, color = "hpd_line"), linetype = "solid", size = 1, alpha = 0.5) +
+  geom_text(data = hpd_df, aes(x = lower, y = 0, label = round(lower, 2)), vjust = -0.5, hjust = -0.5, size = 4, color = custom_palette["hpd_line"]) +
+  geom_vline(data = hpd_df, aes(xintercept = upper, color = "hpd_line"), linetype = "solid", size = 1, alpha = 0.5) +
+  geom_text(data = hpd_df, aes(x = upper, y = 0, label = round(upper, 2)), vjust = -0.5, hjust = 1.5, size = 4, color = custom_palette["hpd_line"]) +
+  facet_wrap(~ parameter, scales = "free", ncol = 2) +
+  scale_color_manual(values = custom_palette, guide = 'none') +
+  labs(title = "Posterior distributions")
+
+print(p)
+```
+
+
+
+```{r}
+
+pweight <- function(p_val, gamma) {
+  return(exp(-((-log(p_val))^gamma)))
+}
+delta = -7.65
+gamma = 0.43
+
+gamma1 = gamma+delta
+gamma2 = gamma-delta
+
+p_vals <- seq(0.01, 1, length.out = 100)
+
+
+plot(p_vals, pweight(p_vals, 0.5), type = 'l', col = 'white', ylim = c(0,1),
+     xlab = 'p_val', ylab = 'Weight', main = 'pweight function')
+
+
+gammas <- c(gamma1, gamma2)
+
+
+colors <- c('blue', 'red', 'green', 'purple')
+for(i in 1:length(gammas)){
+  lines(p_vals, pweight(p_vals, gammas[i]), col = colors[i])
+}
+
+
+legend('topright', legend = paste('gamma =', gammas), col = colors, lty = 1)
+
+```
+
+
+
+
+

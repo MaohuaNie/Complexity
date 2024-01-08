@@ -1,0 +1,352 @@
+
+
+```{r}
+library(rstan)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+library(RWiener)
+```
+
+```{r}
+sim_ddm <- "
+data {
+	int<lower=1> N;									// number of data items
+	int<lower=1> L;									// number of participants
+	// int<lower=1, upper=L> participant[N];			// level (participant)
+
+	int<lower=-1,upper=1> cho[N];				// accuracy (-1, 1)
+	real<lower=0> rt[N];							// rt
+	real evd[N];
+	real sdd[N];
+	real<lower=0, upper=1> starting_point;			// starting point diffusion model not to estimate
+}
+
+parameters {
+
+	real alpha_sbj;
+	real theta_v;
+	real threshold_v;
+	real ndt_v;
+}
+transformed parameters {
+	real drift_ll[N];								// trial-by-trial drift rate for likelihood (incorporates accuracy)
+	real drift_t[N];								// trial-by-trial drift rate for predictions
+	real<lower=0> threshold_t[N];					// trial-by-trial threshold
+	real<lower=0> ndt_t[N];							// trial-by-trial ndt
+
+	real<lower=0> theta_sbj;
+	real<lower=0> threshold_sbj;
+	real<lower=0> ndt_sbj;
+
+	
+
+	
+	theta_sbj = log(1 + exp(theta_v));
+	threshold_sbj = log(1 + exp(threshold_v));
+	ndt_sbj = log(1 + exp(ndt_v));
+
+	for (n in 1:N) {
+		drift_t[n] = theta_sbj * (evd[n] + alpha_sbj * sdd[n]);
+		drift_ll[n] = drift_t[n]*cho[n];
+		threshold_t[n] = threshold_sbj;
+		ndt_t[n] = ndt_sbj;
+	}
+}
+model {
+  alpha_sbj ~ normal(0, 5);
+	theta_v ~ normal(1,5);
+	threshold_v ~ normal(1,3);
+	ndt_v ~ normal(0 ,1);
+
+
+	rt ~ wiener(threshold_t, ndt_t, starting_point, drift_ll);
+} 
+generated quantities {
+	vector[N] log_lik;
+
+	{for (n in 1:N) {
+		log_lik[n] = wiener_lpdf(rt[n] | threshold_t[n], ndt_t[n], starting_point, drift_ll[n]);
+	}
+}
+}
+
+" 
+```
+
+```{r}
+
+initFunc <-function (i) {
+  initList=list()
+  for (ll in 1:i){
+    initList[[ll]] = list(
+                          alpha_sbj = runif(1,-5,5),
+                          theta_v = runif(1,-4,6),
+                          threshold_v = runif(1,-0.5,2.5),
+                          ndt_v = runif(1,-1.5, 0)
+    )
+  }
+  return(initList)
+}
+```
+
+
+```{r}
+
+
+
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+
+stim = read.csv('Switching-Gambles.csv')
+
+
+# gamble characteristics
+  stim$eva = stim$payoffa1*stim$proba1+stim$payoffa2*stim$proba2
+
+  stim$evb = stim$payoffb1*stim$probb1+stim$payoffb2*stim$probb2
+  stim$evd = stim$evb-stim$eva
+  stim$sda = sqrt((stim$payoffa1-stim$eva)^2*stim$proba1 + (stim$payoffa2-stim$eva)^2*stim$proba2)
+  stim$sdb = sqrt((stim$payoffb1-stim$evb)^2*stim$probb1 + (stim$payoffb2-stim$evb)^2*stim$probb2)
+  stim$sdd = stim$sdb - stim$sda 
+  
+  
+  
+
+
+
+```
+
+
+
+```{r warning=FALSE}
+
+# Number of simulations
+num_simulations <- 30
+
+
+# Storage for results
+results_df <- data.frame(
+  True_alpha = numeric(num_simulations),
+  True_theta = numeric(num_simulations),
+  True_th = numeric(num_simulations),
+  True_ndt = numeric(num_simulations),
+  Estimated_alpha = numeric(num_simulations),
+  Estimated_theta = numeric(num_simulations),
+  Estimated_th = numeric(num_simulations),
+  Estimated_ndt = numeric(num_simulations),
+  CI_alpha_Lower = numeric(num_simulations),
+  CI_alpha_Upper = numeric(num_simulations),
+  CI_theta_Lower = numeric(num_simulations),
+  CI_theta_Upper = numeric(num_simulations),
+  CI_th_Lower = numeric(num_simulations),
+  CI_th_Upper = numeric(num_simulations),
+  CI_ndt_Lower = numeric(num_simulations),
+  CI_ndt_Upper = numeric(num_simulations)
+)
+
+
+`%+=%` = function(e1,e2) eval.parent(substitute(e1 <- e1 + e2))
+
+
+
+
+
+
+
+# Run the model for n_iter iterations
+for (i in 1:num_simulations) {
+  
+  beta = 0.5
+
+  
+   # Generate a single random non-zero value within the range
+  theta = runif(1, 0, 0.1)
+  alpha = runif(1, -1, 1)
+  th = runif(1, 1, 6)
+  ndt = runif(1, 0.2, 0.6)
+  
+  
+  #print(alpha)
+  #print(theta)
+  #print(th)
+  #print(ndt)
+  
+  for(n in 1:nrow(stim)){
+    cres <- rwiener(1,th, ndt, beta, theta * (stim$evd[n] + alpha * stim$sdd[n]))
+    stim$simrt[n] <- as.numeric(cres[1]) 
+    stim$simcho[n] <- ifelse(cres[2]=="upper",1,-1)
+  }
+  
+  
+
+  
+  
+  
+  parameters = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj')
+  dataList  = list(cho = stim$simcho,rt = stim$simrt, N=60,  L = 1, starting_point=0.5, evd = stim$evd, sdd = stim$sdd)
+  
+  
+  # Run the diffusion model for the current iteration
+  dsamples <- stan(model_code = sim_ddm,  
+                data=dataList, 
+                pars=parameters,
+                iter=1000, 
+                chains=4, #If not specified, gives random inits
+                init=initFunc(4),
+                warmup = 500,  # Stands for burn-in; Default = iter/2
+                refresh = 0
+                )
+  #print(dsamples, pars = c("alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj'))
+    # Extract and store the estimated parameters and credible intervals
+  extracted_params <- extract(dsamples)
+  Estimated_alpha = mean(extracted_params$alpha_sbj)
+  Estimated_theta = mean(extracted_params$theta_sbj)
+  Estimated_th = mean(extracted_params$threshold_sbj)
+  Estimated_ndt = mean(extracted_params$ndt_sbj)
+  CI_alpha = quantile(extracted_params$alpha_sbj, probs = c(0.025, 0.975))
+  CI_theta = quantile(extracted_params$theta_sbj, probs = c(0.025, 0.975))
+  CI_th = quantile(extracted_params$threshold_sbj, probs = c(0.025, 0.975))
+  CI_ndt = quantile(extracted_params$ndt_sbj, probs = c(0.025, 0.975))
+  
+  # Store the results in the data frame
+  results_df[i, ] <- c(
+    alpha,
+    theta,
+    th,
+    ndt,
+    Estimated_alpha,
+    Estimated_theta,
+    Estimated_th,
+    Estimated_ndt,
+    CI_alpha[1],
+    CI_alpha[2],
+    CI_theta[1],
+    CI_theta[2],
+    CI_th[1],
+    CI_th[2],
+    CI_ndt[1],
+    CI_ndt[2]
+  )
+
+  
+  
+  
+}
+```
+
+
+
+
+
+
+
+```{r}
+
+# Create scatterplots for True vs. Estimated Intercepts with color-coded error bars
+plot_alpha <- ggplot(results_df, aes(x = True_alpha, y = Estimated_alpha)) +
+  geom_point(shape = 16, size = 2, color = "black", fill = "white") +
+  geom_abline(intercept = 0, slope = 1, color = "blue") +
+  geom_errorbar(
+    aes(ymin = results_df$CI_alpha_Lower, ymax = results_df$CI_alpha_Upper),
+    width = 0.03,
+     color = ifelse(results_df$CI_alpha_Lower > results_df$True_alpha | results_df$CI_alpha_Upper < results_df$True_alpha, "red", "blue"),
+    linetype = "solid",
+    size = 0.4,
+    alpha = 0.5
+  ) +
+  labs(
+    title = "Parameter Recovery: alpha",
+    x = "True alpha",
+    y = "Estimated alpha"
+  ) +
+  theme_minimal()  # Change to a minimal theme
+
+# Print the plot
+print(plot_alpha)
+
+
+```
+
+
+```{r}
+results_df
+```
+
+```{r}
+
+# Create scatterplots for True vs. Estimated Intercepts with color-coded error bars
+plot_theta <- ggplot(results_df, aes(x = True_theta, y = Estimated_theta)) +
+  geom_point(shape = 16, size = 2, color = "black", fill = "white") +
+  geom_abline(intercept = 0, slope = 1, color = "blue") +
+  geom_errorbar(
+    aes(ymin = results_df$CI_theta_Lower, ymax = results_df$CI_theta_Upper),
+    width = 0.03,
+     color = ifelse(results_df$CI_theta_Lower > results_df$True_theta | results_df$CI_theta_Upper < results_df$True_theta, "red", "blue"),
+    linetype = "solid",
+    size = 0.4,
+    alpha = 0.5
+  ) +
+  labs(
+    title = "Parameter Recovery: theta",
+    x = "True theta",
+    y = "Estimated theta"
+  ) +
+  theme_minimal()  # Change to a minimal theme
+
+# Print the plot
+print(plot_theta)
+
+```
+
+```{r}
+
+# Create scatterplots for True vs. Estimated Intercepts with color-coded error bars
+plot_th <- ggplot(results_df, aes(x = True_th, y = Estimated_th)) +
+  geom_point(shape = 16, size = 2, color = "black", fill = "white") +
+  geom_abline(intercept = 0, slope = 1, color = "blue") +
+  geom_errorbar(
+    aes(ymin = results_df$CI_th_Lower, ymax = results_df$CI_th_Upper),
+    width = 0.03,
+     color = ifelse(results_df$CI_th_Lower > results_df$True_th | results_df$CI_th_Upper < results_df$True_th, "red", "blue"),
+    linetype = "solid",
+    size = 0.4,
+    alpha = 0.5
+  ) +
+  labs(
+    title = "Parameter Recovery: th",
+    x = "True th",
+    y = "Estimated th"
+  ) +
+  theme_minimal()  # Change to a minimal theme
+
+# Print the plot
+print(plot_th)
+```
+
+```{r}
+
+
+# Create scatterplots for True vs. Estimated Intercepts with color-coded error bars
+plot_ndt <- ggplot(results_df, aes(x = True_ndt, y = Estimated_ndt)) +
+  geom_point(shape = 16, size = 2, color = "black", fill = "white") +
+  geom_abline(intercept = 0, slope = 1, color = "blue") +
+  geom_errorbar(
+    aes(ymin = results_df$CI_ndt_Lower, ymax = results_df$CI_ndt_Upper),
+    width = 0.03,
+     color = ifelse(results_df$CI_ndt_Lower > results_df$True_ndt | results_df$CI_ndt_Upper < results_df$True_ndt, "red", "blue"),
+    linetype = "solid",
+    size = 0.4,
+    alpha = 0.5
+  ) +
+  labs(
+    title = "Parameter Recovery: ndt",
+    x = "True ndt",
+    y = "Estimated ndt"
+  ) +
+  theme_minimal()  # Change to a minimal theme
+
+# Print the plot
+print(plot_ndt)
+```
+
+
