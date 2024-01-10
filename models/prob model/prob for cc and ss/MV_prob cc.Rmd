@@ -35,17 +35,17 @@ tids <- unique(dat$tid)
 dat <- dat %>%
   filter(test_part == 'cc' | test_part == 'ss')
 
+dat <- dat %>%
+  mutate(con = ifelse(test_part == 'cc', 1, -1))
 
 
 ```
 
 
 ```{r message=FALSE, warning=FALSE}
-dat <- dat %>%
-  mutate(
-    trialtype = ifelse(skew == 'rl', 1, ifelse(skew == 'lr', -1, 0)), # 1 rl -1 lr 0 ns
-    con = ifelse(test_part == 'cc', 1, -1),
-  )
+dat$trialtype1 <- ifelse(dat$skew == "ns", -1, ifelse(dat$skew == "lr", 1, ifelse(dat$skew == "rl", 0, NA)))
+dat$trialtype2 <- ifelse(dat$skew == "ns", -1, ifelse(dat$skew == "lr", 0, ifelse(dat$skew == "rl", 1, NA)))
+
 
 dat$rt <- dat$rt/1000
 
@@ -63,7 +63,7 @@ dat$P_B2 <- dat$P_B2 / 100
 
 ```{r}
 
-dataList  = list(cho = dat$cho, rt = dat$rt, participant = dat$tid,N=nrow(dat),  L = length(tids),starting_point=0.5, evd = dat$evd, sdd = dat$sdd, trialtype = dat$trialtype, con = dat$con)
+dataList  = list(cho = dat$cho, rt = dat$rt, participant = dat$tid,N=nrow(dat),  L = length(tids),starting_point=0.5, evd = dat$evd, sdd = dat$sdd, trialtype1 = dat$trialtype1, trialtype2 = dat$trialtype2, con = dat$con)
 
 ```
 
@@ -71,8 +71,8 @@ dataList  = list(cho = dat$cho, rt = dat$rt, participant = dat$tid,N=nrow(dat), 
 
 
 ```{r}
-parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'transf_mu_zeta', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta', 'sd_zeta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'delta_sbj','zeta_sbj', "log_lik")
-
+parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta1','transf_mu_delta2', 'transf_mu_zeta1','transf_mu_zeta2', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta1','sd_delta2', 'sd_zeta1','sd_zeta2', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'delta1_sbj','delta2_sbj','zeta1_sbj', 'zeta2_sbj',"log_lik")
+  
 initFunc <-function (i) {
   initList=list()
   for (ll in 1:i){
@@ -85,16 +85,22 @@ initFunc <-function (i) {
                           sd_ndt = runif(1, 0, 1),
                           mu_theta = runif(1,-20, 1), 
                           sd_theta = runif(1,0,1),
-                          mu_delta = runif(1,-1, 1), 
-                          sd_delta = runif(1, 0, 1),
-                          mu_zeta = runif(1,-1, 1), 
-                          sd_zeta = runif(1, 0, 1),
+                          mu_delta1 = runif(1,-1, 1), 
+                          sd_delta1 = runif(1, 0, 1),
+                          mu_delta2 = runif(1,-1, 1), 
+                          sd_delta2 = runif(1, 0, 1),
+                          mu_zeta1 = runif(1,-1, 1), 
+                          sd_zeta1 = runif(1, 0, 1),
+                          mu_zeta2 = runif(1,-1, 1), 
+                          sd_zeta2 = runif(1, 0, 1),
                           z_alpha = runif(length(tids),-0.1,0.1),
                           z_theta = runif(length(tids),-0.1,0.1),
                           z_threshold = runif(length(tids),-0.1,0.1),
                           z_ndt = runif(length(tids),-0.1,0.1),
-                          z_delta = runif(length(tids),-0.1,0.1),
-                          z_zeta = runif(length(tids),-0.1,0.1)
+                          z_delta1 = runif(length(tids),-0.1,0.1),
+                          z_delta2 = runif(length(tids),-0.1,0.1),
+                          z_zeta1 = runif(length(tids),-0.1,0.1),
+                          z_zeta2 = runif(length(tids),-0.1,0.1)
                           
                          
     )
@@ -149,7 +155,7 @@ hpd_interval <- t(apply(samples_matrix, 2, function(x) quantile(x, probs=c(0.025
 
 
 
-parameters <- c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_beta')
+parameters <- c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta1', 'transf_mu_delta2', 'transf_mu_zeta1', 'transf_mu_zeta2')
 
 # Reshape data to a long format
 df_long <- as.data.frame(samples_matrix) %>%

@@ -107,7 +107,7 @@ dataList  = list(cho = df$chose_complex, rt = df$rt, participant = df$tid,N=nrow
                  starting_point = 0.5
                  )
 
-parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'transf_mu_gamma', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_gamma','sd_delta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'gamma_sbj', 'delta_sbj', "log_lik")
+parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta_gamma', 'transf_mu_gamma', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_gamma','sd_delta_gamma', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'gamma_sbj', 'delta_gamma_sbj', "log_lik")
 
 ```
 
@@ -144,19 +144,19 @@ initFunc <-function (i) {
 ```
 
 
-```{r}
+```{r include=FALSE}
 m <- stan_model("EU_prob cs.stan")
 dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
-                iter=2000, 
+                iter=1000, 
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
-                warmup = 1000,  # Stands for burn-in; Default = iter/2
-                seed = 12,
-                refresh = 0
+                warmup = 500,  # Stands for burn-in; Default = iter/2
+                seed = 12
 
                 )
+
 
 ```
 

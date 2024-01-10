@@ -2,19 +2,17 @@
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 ```
 
-```{r message=FALSE, warning=FALSE}
 
+```{r message=FALSE, warning=FALSE}
+############### 0 - safe choice A, 1 - risky choice B #####################
 library(rstan); rstan_options(javascript=FALSE)
-library(bayesplot)
-library(dplyr)
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = T)
+library(dplyr)
+
+
 
 dat <- read.csv('final_data.csv')
-```
-
-
-```{r}
 
 dat <- dat %>%
   filter(skew != 'control')
@@ -22,52 +20,78 @@ dat <- dat %>%
   mutate(cho = ifelse(true_response == 'f', 1, -1))
 
 
-dat$P_A1 <- dat$P_A1 / 100
-dat$P_A2 <- dat$P_A2 / 100
-dat$P_B1 <- dat$P_B1 / 100
-dat$P_B2 <- dat$P_B2 / 100
-```
-
-
-
-
-```{r}
 ids <- unique(dat$Prolific_ID)
 for(j in 1:length(ids)){
   dat$tid[dat$Prolific_ID==ids[j]] <- j
 }
 tids <- unique(dat$tid)
 
-dat$rt <- as.numeric(dat$rt/1000) 
+dat <- dat %>%
+  filter(test_part == 'cs' | test_part == 'sc')
 
 dat <- dat %>%
-  filter(test_part == 'cc' | test_part == 'ss')
+  mutate(
+    oa_complex = ifelse(test_part == 'cs', 1, -1),
+    evd = evd * oa_complex,
+    sdd = sdd * oa_complex,
+    chose_complex = ifelse((oa_complex == 1 & cho == 1) | (oa_complex == -1 & cho == -1), 1, -1)
+  )
 
-dat <- dat %>%
-  mutate(con = ifelse(test_part == 'cc', 1 , -1)  )
+dat$rt <- dat$rt/1000
+
+
+
+dat$P_A1 <- dat$P_A1 / 100
+dat$P_A2 <- dat$P_A2 / 100
+dat$P_B1 <- dat$P_B1 / 100
+dat$P_B2 <- dat$P_B2 / 100
+
 
 ```
 
 
-  
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(stringr)
 
-```{r}
-dat <- dat %>% 
-  mutate(index1 = as.numeric(ifelse(O_A1>O_A2, 1, -1)) ,
-         index2 = as.numeric(ifelse(O_B1>O_B2, 1, -1)),)
 
-dat <- dat %>%
+df <- dat %>%
   # Swap values if oa_condition is not 0
   rowwise() %>%
   mutate(
-    oa3 = if_else(index1 == 1, O_A1, O_A2),
-    oa4 = if_else(index1 == 1, O_A2, O_A1),
-    pa3 = if_else(index1 == 1, P_A1, P_A2),
-    pa4 = if_else(index1 == 1, P_A2, P_A1),
-    ob3 = if_else(index2 == 1, O_B1, O_B2),
-    ob4 = if_else(index2 == 1, O_B2, O_B1),
-    pb3 = if_else(index2 == 1, P_B1, P_B2),
-    pb4 = if_else(index2 == 1, P_B2, P_B1),
+    oc1 = if_else(test_part == 'sc', O_B1, O_A1),
+    oc2 = if_else(test_part == 'sc', O_B2, O_A2),
+    pc1 = if_else(test_part == 'sc', P_B1, P_A1),
+    pc2 = if_else(test_part == 'sc', P_B2, P_A2),
+    os1 = if_else(test_part == 'sc', O_A1, O_B1),
+    os2 = if_else(test_part == 'sc', O_A2, O_B2),
+    ps1 = if_else(test_part == 'sc', P_A1, P_B1),
+    ps2 = if_else(test_part == 'sc', P_A2, P_B2),
+  ) %>%
+  ungroup()
+
+
+
+```
+
+
+```{r}
+df <- df %>% 
+  mutate(index1 = as.numeric(ifelse(oc1>oc2, 1, -1)) ,
+         index2 = as.numeric(ifelse(os1>os2, 1, -1)),)
+
+df <- df %>%
+  # Swap values if oa_condition is not 0
+  rowwise() %>%
+  mutate(
+    oc3 = if_else(index1 == 1, oc1, oc2),
+    oc4 = if_else(index1 == 1, oc2, oc1),
+    pc3 = if_else(index1 == 1, pc1, pc2),
+    pc4 = if_else(index1 == 1, pc2, pc1),
+    os3 = if_else(index2 == 1, os1, os2),
+    os4 = if_else(index2 == 1, os2, os1),
+    ps3 = if_else(index2 == 1, ps1, ps2),
+    ps4 = if_else(index2 == 1, ps2, ps1),
   ) %>%
   ungroup()
 
@@ -75,25 +99,15 @@ dat <- dat %>%
 
 
 ```{r}
-oa = as.matrix(dat[, c("oa3", "oa4")])
-ob = as.matrix(dat[, c("ob3", "ob4")])
-pa = as.matrix(dat[, c("pa3", "pa4")])
-pb = as.matrix(dat[, c("pb3", "pb4")])
-
-```
-
-```{r}
-dataList  = list(cho = dat$cho,rt = dat$rt, participant = dat$tid,N=nrow(dat),  L = length(tids),starting_point=0.5, 
-                 oa = as.matrix(dat[, c("oa3", "oa4")]),
-                 ob = as.matrix(dat[, c("ob3", "ob4")]),
-                 pa = as.matrix(dat[, c("pa3", "pa4")]),
-                 pb = as.matrix(dat[, c("pb3", "pb4")]),
-                 con = dat$con
+dataList  = list(cho = df$chose_complex, rt = df$rt, participant = df$tid,N=nrow(df),  L = length(tids), 
+                 oc = as.matrix(df[, c("oc3", "oc4")]),
+                 os = as.matrix(df[, c("os3", "os4")]),
+                 pc = as.matrix(df[, c("pc3", "pc4")]),
+                 ps = as.matrix(df[, c("ps3", "ps4")]),
+                 starting_point = 0.5
                  )
 
-
-
-parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'transf_mu_gamma', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_gamma','sd_delta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'gamma_sbj', 'delta_sbj', "log_lik")
+parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta_gamma', 'transf_mu_gamma', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_gamma','sd_delta_gamma', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'gamma_sbj', 'delta_gamma_sbj', "log_lik")
 
 ```
 
@@ -130,16 +144,17 @@ initFunc <-function (i) {
 ```
 
 
-```{r}
-m <- stan_model("EU_prob cc.stan")
+```{r include=FALSE}
+m <- stan_model("EU_prob cs.stan")
 dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
-                iter=1000, 
+                iter=500, 
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
-                warmup = 500,  # Stands for burn-in; Default = iter/2
-                seed = 12
+                warmup = 250,  # Stands for burn-in; Default = iter/2
+                seed = 12,
+                refresh = 0 
 
                 )
 
@@ -211,11 +226,4 @@ p <- ggplot(df_long, aes(x = value)) +
 
 print(p)
 ```
-
-
-
-
-
-
-
 

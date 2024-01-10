@@ -48,10 +48,9 @@ dat <- dat %>%
 
 
 ```{r message=FALSE, warning=FALSE}
-dat <- dat %>%
-  mutate(
-    trialtype = ifelse(skew == 'rl', 1, ifelse(skew == 'lr', -1, 0)) # 1 rl -1 lr 0 ns
-  )
+dat$trialtype1 <- ifelse(dat$skew == "ns", -1, ifelse(dat$skew == "lr", 1, ifelse(dat$skew == "rl", 0, NA)))
+dat$trialtype2 <- ifelse(dat$skew == "ns", -1, ifelse(dat$skew == "lr", 0, ifelse(dat$skew == "rl", 1, NA)))
+
 
 dat$rt <- dat$rt/1000
 
@@ -69,7 +68,7 @@ dat$P_B2 <- dat$P_B2 / 100
 
 ```{r}
 
-dataList  = list(cho = dat$cho, rt = dat$rt, participant = dat$tid,N=nrow(dat),  L = length(tids),starting_point=0.5, evd = dat$evd, sdd = dat$sdd, trialtype = dat$trialtype)
+dataList  = list(cho = dat$cho, rt = dat$rt, participant = dat$tid,N=nrow(dat),  L = length(tids),starting_point=0.5, evd = dat$evd, sdd = dat$sdd, trialtype1 = dat$trialtype1, trialtype2 = dat$trialtype2)
 
 ```
 
@@ -77,7 +76,7 @@ dataList  = list(cho = dat$cho, rt = dat$rt, participant = dat$tid,N=nrow(dat), 
 
 
 ```{r}
-parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'delta_sbj', "log_lik")
+parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta_con1','transf_mu_delta_con2', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta_con1', 'sd_delta_con2', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'delta_con1_sbj','delta_con2_sbj', "log_lik")
 
 initFunc <-function (i) {
   initList=list()
@@ -91,13 +90,16 @@ initFunc <-function (i) {
                           sd_ndt = runif(1, 0, 1),
                           mu_theta = runif(1,-20, 1), 
                           sd_theta = runif(1,0,1),
-                          mu_delta = runif(1,-1, 1), 
-                          sd_delta = runif(1, 0, 1),
+                          mu_delta_con1 = runif(1,-1, 1), 
+                          sd_delta_con1 = runif(1, 0, 1),
+                          mu_delta_con2 = runif(1,-1, 1), 
+                          sd_delta_con2 = runif(1, 0, 1),
                           z_alpha = runif(length(tids),-0.1,0.1),
                           z_theta = runif(length(tids),-0.1,0.1),
                           z_threshold = runif(length(tids),-0.1,0.1),
                           z_ndt = runif(length(tids),-0.1,0.1),
-                          z_delta = runif(length(tids),-0.1,0.1)
+                          z_delta_con1 = runif(length(tids),-0.1,0.1),
+                          z_delta_con2 = runif(length(tids),-0.1,0.1)
                           
                          
     )
@@ -117,8 +119,8 @@ dsamples <- sampling(m,
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
                 warmup = 500,  # Stands for burn-in; Default = iter/2
-                seed = 12,  # Setting seed; Default is random seed
-                refresh = 0
+                seed = 12  # Setting seed; Default is random seed
+                #refresh = 0
                 )
 ```
 
@@ -126,10 +128,10 @@ dsamples <- sampling(m,
 ```{r}
 #parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj',"log_lik")
 
-rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta', "lp__"), inc_warmup = TRUE, nrow = 3)
+rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta_con1','transf_mu_delta_con2', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta_con1','sd_delta_con2', "lp__"), inc_warmup = TRUE, nrow = 3)
 
-pairs(dsamples, pars = c( "transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta', "lp__"))
-print(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta', "lp__"))
+pairs(dsamples, pars = c( "transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta_con1','transf_mu_delta_con2', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta_con1','sd_delta_con2', "lp__"))
+print(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta_con1','transf_mu_delta_con2', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta_con1','sd_delta_con2',"lp__"))
 
 ```
 
@@ -145,7 +147,7 @@ hpd_interval <- t(apply(samples_matrix, 2, function(x) quantile(x, probs=c(0.025
 
 
 
-parameters <- c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta')
+parameters <- c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta_con1', 'transf_mu_delta_con2')
 
 # Reshape data to a long format
 df_long <- as.data.frame(samples_matrix) %>%
