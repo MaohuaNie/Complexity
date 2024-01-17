@@ -71,7 +71,7 @@ dataList  = list(cho = dat$cho, rt = dat$rt, participant = dat$tid,N=nrow(dat), 
 
 
 ```{r}
-parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta1','transf_mu_delta2', 'transf_mu_zeta1','transf_mu_zeta2', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_delta1','sd_delta2', 'sd_zeta1','sd_zeta2', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'delta1_sbj','delta2_sbj','zeta1_sbj', 'zeta2_sbj',"log_lik")
+parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_lambda_right','transf_mu_lambda_left', 'transf_mu_delta_right','transf_mu_delta_left', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_lambda_right','sd_lambda_left', 'sd_delta_right','sd_delta_left', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj', 'lambda_right_sbj','lambda_left_sbj','delta_right_sbj', 'delta_left_sbj',"log_lik")
   
 initFunc <-function (i) {
   initList=list()
@@ -85,22 +85,22 @@ initFunc <-function (i) {
                           sd_ndt = runif(1, 0, 1),
                           mu_theta = runif(1,-20, 1), 
                           sd_theta = runif(1,0,1),
-                          mu_delta1 = runif(1,-1, 1), 
-                          sd_delta1 = runif(1, 0, 1),
-                          mu_delta2 = runif(1,-1, 1), 
-                          sd_delta2 = runif(1, 0, 1),
-                          mu_zeta1 = runif(1,-1, 1), 
-                          sd_zeta1 = runif(1, 0, 1),
-                          mu_zeta2 = runif(1,-1, 1), 
-                          sd_zeta2 = runif(1, 0, 1),
+                          mu_lambda_right = runif(1,-1, 1), 
+                          sd_lambda_right = runif(1, 0, 1),
+                          mu_lambda_left = runif(1,-1, 1), 
+                          sd_lambda_left = runif(1, 0, 1),
+                          mu_delta_right = runif(1,-1, 1), 
+                          sd_delta_right = runif(1, 0, 1),
+                          mu_delta_left = runif(1,-1, 1), 
+                          sd_delta_left = runif(1, 0, 1),
                           z_alpha = runif(length(tids),-0.1,0.1),
                           z_theta = runif(length(tids),-0.1,0.1),
                           z_threshold = runif(length(tids),-0.1,0.1),
                           z_ndt = runif(length(tids),-0.1,0.1),
-                          z_delta1 = runif(length(tids),-0.1,0.1),
-                          z_delta2 = runif(length(tids),-0.1,0.1),
-                          z_zeta1 = runif(length(tids),-0.1,0.1),
-                          z_zeta2 = runif(length(tids),-0.1,0.1)
+                          z_lambda_right = runif(length(tids),-0.1,0.1),
+                          z_lambda_left = runif(length(tids),-0.1,0.1),
+                          z_delta_right = runif(length(tids),-0.1,0.1),
+                          z_delta_left = runif(length(tids),-0.1,0.1)
                           
                          
     )
@@ -111,17 +111,17 @@ initFunc <-function (i) {
 ```
 
 
-```{r}
+```{r include=FALSE}
 m <- stan_model("MV_prob cc.stan")
 dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
-                iter=1000, 
+                iter=2000, 
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
-                warmup = 500,  # Stands for burn-in; Default = iter/2
-                seed = 12  # Setting seed; Default is random seed
-                #refresh = 0
+                warmup = 1000,  # Stands for burn-in; Default = iter/2
+                seed = 12,  # Setting seed; Default is random seed
+                refresh = 0
                 )
 ```
 
@@ -129,20 +129,14 @@ dsamples <- sampling(m,
 ```{r}
 #parameters = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', "alpha_sbj","threshold_sbj","ndt_sbj",'theta_sbj',"log_lik")
 
-rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_beta', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_beta', "lp__"), inc_warmup = TRUE, nrow = 3)
+rstan::traceplot(dsamples, pars=c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_lambda_right','transf_mu_lambda_left', 'transf_mu_delta_right','transf_mu_delta_left', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_lambda_right','sd_lambda_left', 'sd_delta_right','sd_delta_left', "lp__"), inc_warmup = TRUE, nrow = 3)
 
-pairs(dsamples, pars = c( "transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_beta', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_beta', "lp__"))
-print(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_beta', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_beta', "lp__"))
+pairs(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_lambda_right','transf_mu_lambda_left', 'transf_mu_delta_right','transf_mu_delta_left', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_lambda_right','sd_lambda_left', 'sd_delta_right','sd_delta_left', "lp__"))
+print(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_lambda_right','transf_mu_lambda_left', 'transf_mu_delta_right','transf_mu_delta_left', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_lambda_right','sd_lambda_left', 'sd_delta_right','sd_delta_left', "lp__"))
 
 ```
 
-```{r}
-library(bayesplot)
-ratios_cp <- neff_ratio(dsamples, pars = c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_beta', 'sd_threshold',"sd_alpha","sd_ndt", 'sd_theta', 'sd_beta',"lp__"))
-df_ratios_cp <- as.data.frame(ratios_cp)
-print(df_ratios_cp)
-mcmc_neff(ratios_cp, size = 2)
-```
+
 
 
 ```{r}
@@ -155,7 +149,7 @@ hpd_interval <- t(apply(samples_matrix, 2, function(x) quantile(x, probs=c(0.025
 
 
 
-parameters <- c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_delta1', 'transf_mu_delta2', 'transf_mu_zeta1', 'transf_mu_zeta2')
+parameters <- c("transf_mu_alpha","transf_mu_threshold","transf_mu_ndt", "transf_mu_theta",'transf_mu_lambda_right','transf_mu_lambda_left', 'transf_mu_delta_right','transf_mu_delta_left')
 
 # Reshape data to a long format
 df_long <- as.data.frame(samples_matrix) %>%

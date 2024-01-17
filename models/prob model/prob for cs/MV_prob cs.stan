@@ -18,8 +18,8 @@ parameters {
 	real mu_theta;
 	real mu_threshold;
 	real mu_ndt;
-	real mu_delta_con1; // effect of lr compared with ns
-	real mu_delta_con2; // effect of rl compared with ns
+	real mu_lambda_right; // effect of lr compared with ns
+	real mu_lambda_left; // effect of rl compared with ns
 
 	
 
@@ -27,8 +27,8 @@ parameters {
 	real<lower=0> sd_theta;
 	real<lower=0> sd_threshold;
 	real<lower=0> sd_ndt;
-	real<lower=0> sd_delta_con1;
-	real<lower=0> sd_delta_con2;
+	real<lower=0> sd_lambda_right;
+	real<lower=0> sd_lambda_left;
 
 	
 	
@@ -36,8 +36,8 @@ parameters {
 	real z_threshold[L];
 	real z_alpha[L];
 	real z_ndt[L];
-	real z_delta_con1[L];
-	real z_delta_con2[L];
+	real z_lambda_right[L];
+	real z_lambda_left[L];
 
 
 }
@@ -57,8 +57,8 @@ transformed parameters {
 	real<lower=0> theta_sbj[L];
 	real<lower=0> threshold_sbj[L];
 	real<lower=0> ndt_sbj[L];
-	real delta_con1_sbj[L];
-	real delta_con2_sbj[L];
+	real lambda_right_sbj[L];
+	real lambda_left_sbj[L];
 
 
 
@@ -66,8 +66,8 @@ transformed parameters {
 	real transf_mu_theta;
 	real transf_mu_threshold;
 	real transf_mu_ndt;
-	real transf_mu_delta_con1;
-	real transf_mu_delta_con2;
+	real transf_mu_lambda_right;
+	real transf_mu_lambda_left;
 
 
 
@@ -75,8 +75,8 @@ transformed parameters {
 	transf_mu_theta = log(1+ exp(mu_theta));					
 	transf_mu_threshold = log(1+ exp(mu_threshold));
 	transf_mu_ndt = log(1 + exp(mu_ndt));
-	transf_mu_delta_con1 = mu_delta_con1;
-	transf_mu_delta_con2 = mu_delta_con2;
+	transf_mu_lambda_right = mu_lambda_right;
+	transf_mu_lambda_left = mu_lambda_left;
 
 
 
@@ -85,14 +85,14 @@ transformed parameters {
 		theta_sbj[l] = log(1 + exp(mu_theta + z_theta[l]*sd_theta));
 		threshold_sbj[l] = log(1 + exp(mu_threshold + z_threshold[l]*sd_threshold));
 		ndt_sbj[l] = log(1 + exp(mu_ndt + z_ndt[l]*sd_ndt));
-		delta_con1_sbj[l] = mu_delta_con1 + z_delta_con1[l]*sd_delta_con1;
-		delta_con2_sbj[l] = mu_delta_con2+ z_delta_con2[l]*sd_delta_con2;
+		lambda_right_sbj[l] = mu_lambda_right + z_lambda_right[l]*sd_lambda_right;
+		lambda_left_sbj[l] = mu_lambda_left+ z_lambda_left[l]*sd_lambda_left;
   
 
 	}
 
 	for (n in 1:N) {
-		drift_t[n] = theta_sbj[participant[n]] * (evd[n] + alpha_sbj[participant[n]] * sdd[n] + delta_con1_sbj[participant[n]] * trialtype1[n] + delta_con2_sbj[participant[n]] * trialtype2[n]);
+		drift_t[n] = theta_sbj[participant[n]] * (evd[n] + alpha_sbj[participant[n]] * sdd[n] + lambda_right_sbj[participant[n]] * trialtype1[n] + lambda_left_sbj[participant[n]] * trialtype2[n]);
 		drift_ll[n] = drift_t[n]*cho[n];
 		threshold_t[n] = threshold_sbj[participant[n]];
 		ndt_t[n] = ndt_sbj[participant[n]];
@@ -105,16 +105,16 @@ model {
 	mu_theta ~ normal(1, 5);
 	mu_threshold ~ normal(1, 3);
 	mu_ndt ~ normal(0, 1);
-	mu_delta_con1 ~ normal(0, 5);
-	mu_delta_con2 ~ normal(0, 5);
+	mu_lambda_right ~ normal(0, 5);
+	mu_lambda_left ~ normal(0, 5);
 
 
 	sd_alpha ~ normal(0, 5);
 	sd_theta ~ normal(0, 5);
 	sd_threshold ~ normal(0,3);
 	sd_ndt ~ normal(0,1);
-	sd_delta_con1 ~ normal(0,5);
-	sd_delta_con2 ~ normal(0,5);
+	sd_lambda_right ~ normal(0,5);
+	sd_lambda_left ~ normal(0,5);
 
 	
 	
@@ -122,8 +122,8 @@ model {
 	z_threshold ~ normal(0, 1);
 	z_ndt ~ normal(0, 1);
 	z_theta ~ normal(0, 1);
-	z_delta_con1 ~ normal(0, 1);
-	z_delta_con2 ~ normal(0, 1);
+	z_lambda_right ~ normal(0, 1);
+	z_lambda_left ~ normal(0, 1);
 
   
 	  

@@ -99,7 +99,8 @@ dsamples <- sampling(m,
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
                 warmup = 500,  # Stands for burn-in; Default = iter/2
-                seed = 12
+                seed = 12,
+                refresh = 0
                 )
 ```
 

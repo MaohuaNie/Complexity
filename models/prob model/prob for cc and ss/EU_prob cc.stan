@@ -62,8 +62,8 @@ transformed parameters {
 	real<lower=0> theta_sbj[L];
 	real<lower=0> threshold_sbj[L];
 	real<lower=0> ndt_sbj[L];
-	real<lower=0> gamma_sbj[L];
-	real<lower=0> delta_gamma_sbj[L];
+	real gamma_sbj[L];
+	real delta_gamma_sbj[L];
 
 
 	real transf_mu_alpha;

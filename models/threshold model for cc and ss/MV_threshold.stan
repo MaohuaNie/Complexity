@@ -99,7 +99,7 @@ model {
 	mu_theta ~ normal(1, 5);
 	mu_threshold ~ normal(1, 3);
 	mu_ndt ~ normal(0, 1);
-	mu_delta_threshold ~ normal(0, 5);
+	mu_delta_threshold ~ normal(0, 1);
 	
 
 

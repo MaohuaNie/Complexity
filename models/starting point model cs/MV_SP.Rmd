@@ -102,10 +102,10 @@ m <- stan_model("MV_SP.stan")
 dsamples <- sampling(m,  
                 data=dataList, 
                 pars=parameters,
-                iter=1000, 
+                iter=2000, 
                 chains=4,#If not specified, gives random inits
                 init = initFunc(4),
-                warmup = 500,  # Stands for burn-in; Default = iter/2
+                warmup = 1000,  # Stands for burn-in; Default = iter/2
                 seed = 12,  # Setting seed; Default is random seed
                 refresh = 0
                 )
